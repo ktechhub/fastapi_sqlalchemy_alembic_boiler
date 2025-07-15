@@ -1,4 +1,4 @@
-from .base import CRUDBase
+from .activity_base import ActivityCRUDBase
 from ..models.role_permissions import RolePermission
 from ..schemas.role_permissions import (
     RolePermissionCreateSchema,
@@ -7,7 +7,9 @@ from ..schemas.role_permissions import (
 
 
 class CRUDRolePermission(
-    CRUDBase[RolePermission, RolePermissionCreateSchema, RolePermissionUpdateSchema]
+    ActivityCRUDBase[
+        RolePermission, RolePermissionCreateSchema, RolePermissionUpdateSchema
+    ]
 ):
     pass
 

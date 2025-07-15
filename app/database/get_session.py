@@ -18,7 +18,7 @@ if "sqlite" not in DATABASE_URL:
 engine = create_async_engine(DATABASE_URL, **engine_options)
 
 # Configure the sessionmaker
-Session = sessionmaker(
+AsyncSessionLocal = sessionmaker(
     engine,
     autocommit=False,
     autoflush=False,
@@ -28,5 +28,8 @@ Session = sessionmaker(
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    async with Session() as session:
-        yield session
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

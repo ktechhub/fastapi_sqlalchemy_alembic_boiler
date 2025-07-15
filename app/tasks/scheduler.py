@@ -2,6 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from .common.roles import create_or_update_roles
 from .common.permissions import create_or_update_permissions
 from .common.role_permissions import sync_role_permissions
+from .logs.activity_logs import delete_activity_logs
 from app.core.loggers import scheduler_logger as logger
 
 
@@ -28,6 +29,13 @@ def schedule_tasks():
             "day_of_week": "mon",
             "hour": 2,
             "minute": 30,
+        },
+        {
+            "task": delete_activity_logs,
+            "trigger": "cron",
+            "day_of_week": "sun",
+            "hour": 3,
+            "minute": 0,
         },
     ]
 

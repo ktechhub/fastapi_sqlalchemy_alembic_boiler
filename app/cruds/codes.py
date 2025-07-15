@@ -1,5 +1,5 @@
 from app.models.codes import VerificationCode
-from app.cruds.base import CRUDBase
+from app.cruds.activity_base import ActivityCRUDBase
 from app.schemas.verification_codes import (
     VerificationCodeCreate,
     VerificationCodeUpdate,
@@ -7,7 +7,7 @@ from app.schemas.verification_codes import (
 
 
 class CRUDVerificationCode(
-    CRUDBase[VerificationCode, VerificationCodeCreate, VerificationCodeUpdate]
+    ActivityCRUDBase[VerificationCode, VerificationCodeCreate, VerificationCodeUpdate]
 ):
     pass
 

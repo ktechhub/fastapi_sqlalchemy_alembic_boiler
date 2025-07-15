@@ -1,7 +1,9 @@
 from datetime import datetime
 from io import BytesIO
+import hashlib
 import boto3
 import time
+from botocore.client import Config
 from app.core.config import settings
 
 
@@ -9,46 +11,141 @@ async def save_file_to_s3(
     file_object, extension=".png", folder="general", access_type="public"
 ) -> str:
     """
-    Save a file object to an S3 bucket using Boto3.
+    Save a file object to an S3 bucket using direct upload with explicit hash handling.
 
     :param file_object: The file object to upload, expected to have a .file attribute.
     :param extension: The file extension, default is '.png'.
-    :param folder: The folder within the 'verifications' directory in S3 where the file will be stored.
+    :param folder: The folder within the bucket where the file will be stored.
     :param access_type: Determines the ACL for the file, 'public' for public-read access, 'private' otherwise.
     :return: The public or private URL of the uploaded file.
     """
-    # Initialize S3 client with credentials
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.S3_STORAGE_HOST,
         aws_access_key_id=settings.S3_STORAGE_ACCESS_KEY,
         aws_secret_access_key=settings.S3_STORAGE_SECRET_KEY,
+        config=Config(signature_version="s3v4"),
     )
 
-    # Create a unique filename with a timestamp to avoid overwriting files
-    filename = f"{folder}/{str(datetime.now().timestamp()).replace('.', '')}{extension}"
+    try:
+        # Reset file position
+        if hasattr(file_object, "seek"):
+            await file_object.seek(0)
 
-    # Extract the file object and ensure the pointer is at the beginning
-    file = file_object.file
-    file.seek(0)
+        # Read the entire file content
+        if hasattr(file_object, "read"):
+            content = await file_object.read()
+        else:
+            content = file_object.file.read()
 
-    # Read the file into a BytesIO buffer for uploading
-    file_buffer = BytesIO(file.read())
+        # Ensure content is bytes
+        if isinstance(content, str):
+            content = content.encode("utf-8")
 
-    # Define ExtraArgs based on access type
-    extra_args = (
-        {"ACL": "public-read"} if access_type == "public" else {"ACL": "private"}
+        # Calculate SHA256 hash
+        content_hash = hashlib.sha256(content).hexdigest()
+
+        # Create filename
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        filename = f"{folder}/{timestamp}{extension}"
+
+        # Prepare headers with explicit hash
+        headers = {
+            "x-amz-content-sha256": content_hash,
+            "x-amz-acl": "public-read" if access_type == "public" else "private",
+            "Content-Type": (
+                f"image/{extension.lstrip('.')}"
+                if extension.startswith(".")
+                else f"image/{extension}"
+            ),
+        }
+
+        # Upload directly using put_object
+        response = s3.put_object(
+            Bucket=settings.S3_STORAGE_BUCKET,
+            Key=filename,
+            Body=content,
+            ContentType=headers["Content-Type"],
+            ACL=headers["x-amz-acl"],
+            ChecksumSHA256=content_hash,
+        )
+
+        return f"{settings.S3_STORAGE_HOST}/{settings.S3_STORAGE_BUCKET}/{filename}"
+
+    except Exception as e:
+        print(f"Full error details: {type(e).__name__}: {str(e)}")
+
+        # Add debug information
+        if "content" in locals():
+            print(f"Content length: {len(content)}")
+            print(f"Content type: {type(content)}")
+            if len(content) > 0:
+                print(f"First few bytes: {content[:50]}")
+
+        raise Exception(f"Failed to upload file to S3: {str(e)}")
+
+
+async def save_bytesio_to_s3(
+    file_bytes: BytesIO, extension=".csv", folder="exports", access_type="public"
+) -> str:
+    """
+    Save an io.BytesIO file to S3 bucket.
+
+    :param file_bytes: The file in BytesIO format.
+    :param extension: The file extension, default is '.csv'.
+    :param folder: The folder within the bucket where the file will be stored.
+    :param access_type: Determines the ACL for the file, 'public' for public-read access, 'private' otherwise.
+    :return: The public or private URL of the uploaded file.
+    """
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=settings.S3_STORAGE_HOST,
+        aws_access_key_id=settings.S3_STORAGE_ACCESS_KEY,
+        aws_secret_access_key=settings.S3_STORAGE_SECRET_KEY,
+        config=Config(signature_version="s3v4"),
     )
 
-    # Upload the file object to the S3 bucket
-    s3.upload_fileobj(
-        file_buffer, settings.S3_SOTRAGE_BUCKET, filename, ExtraArgs=extra_args
-    )
+    try:
+        # Reset file position before reading
+        file_bytes.seek(0)
 
-    # Construct the file URL
-    file_url = f"{settings.S3_STORAGE_HOST}/{settings.S3_SOTRAGE_BUCKET}/{filename}"
+        # Read file content
+        content = file_bytes.read()
 
-    return file_url
+        # Ensure content is bytes
+        if not isinstance(content, bytes):
+            raise ValueError("File content must be in bytes format")
+
+        # Calculate SHA256 hash for file integrity
+        content_hash = hashlib.sha256(content).hexdigest()
+
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        filename = f"{folder}/{timestamp}{extension}"
+
+        # Prepare S3 headers
+        headers = {
+            "x-amz-content-sha256": content_hash,
+            "x-amz-acl": "public-read" if access_type == "public" else "private",
+            "Content-Type": (
+                "text/csv" if extension == ".csv" else "application/octet-stream"
+            ),
+        }
+
+        # Upload file to S3
+        s3.put_object(
+            Bucket=settings.S3_STORAGE_BUCKET,
+            Key=filename,
+            Body=content,
+            ContentType=headers["Content-Type"],
+            ACL=headers["x-amz-acl"],
+            ChecksumSHA256=content_hash,
+        )
+
+        return f"{settings.S3_STORAGE_HOST}/{settings.S3_STORAGE_BUCKET}/{filename}"
+
+    except Exception as e:
+        raise Exception(f"Failed to upload BytesIO file to S3: {str(e)}")
 
 
 def upload_to_object_storage(

@@ -41,6 +41,7 @@ default_actions = [
     "profiles",
     "metrics",
     "reports",
+    "logs",
 ]
 
 default_role_permissions = [
@@ -55,6 +56,7 @@ default_role_permissions = [
             "metrics": ["read", "write", "delete"],
             "reports": ["read", "write", "delete"],
             "profiles": ["read", "write", "delete"],
+            "logs": ["read", "write", "delete"],
         },
     },
     {
@@ -68,6 +70,7 @@ default_role_permissions = [
             "profiles": ["read"],
             "metrics": ["read"],
             "reports": ["read"],
+            "logs": ["read"],
         },
     },
     {

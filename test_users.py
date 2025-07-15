@@ -1,9 +1,6 @@
 import asyncio
 from faker import Faker
-from datetime import datetime, timezone, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from app.core.config import settings
+from datetime import datetime, timezone
 from app.tasks.common.fake_users import create_fake_users
 from app.utils.password_util import hash_password
 from app.cruds.users import user_crud
@@ -14,18 +11,11 @@ from app.utils.telegram import send_telegram_msg
 
 from app.tasks.common.permissions import create_or_update_permissions
 from app.tasks.common.roles import create_or_update_roles
-from app.schemas.users import UserUpdateSchema
+from app.schemas.users import UserUpdateWithPasswordSchema
 from app.tasks.common.role_permissions import sync_role_permissions
-from app.tasks.common.defaults import default_roles
-
-engine = create_async_engine(settings.DATABASE_URL, pool_size=200, pool_pre_ping=True)
-SessionLocal = sessionmaker(
-    engine,
-    autocommit=False,
-    autoflush=False,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+from app.core.defaults import default_roles
+from app.database.get_session import AsyncSessionLocal
+from app.core.config import settings
 
 ghana_cities = [
     "Accra",
@@ -68,85 +58,86 @@ def ghana_phone_number():
 
 
 async def create_test_users() -> None:
-    session = SessionLocal()
+    async with AsyncSessionLocal() as session:
 
-    users = []
-    for role_data in default_roles:
-        role = await role_crud.get(db=session, name=role_data["name"])
+        users = []
+        for role_data in default_roles:
+            role = await role_crud.get(db=session, name=role_data["name"])
 
-        # check if user exists
-        user = await user_crud.get(
-            db=session, email=f"{role_data['name'].lower()}@ktechhub.com"
+            # check if user exists
+            user = await user_crud.get(
+                db=session, email=f"{role_data['name'].lower()}@{settings.DOMAIN}"
+            )
+            city = fake.random_element(ghana_cities)
+            location = f"{fake.street_address()}, {city}, Ghana"
+            national_id_prefix = f"{city[:3].upper()}"
+            national_id = f"{national_id_prefix}-{fake.random_number(digits=10)}-{fake.random_number(digits=1)}"
+            last_name = fake.last_name()
+            if not user:
+                # create user
+                user = await user_crud.create(
+                    db=session,
+                    obj_in=UserUpdateWithPasswordSchema(
+                        first_name=role_data["label"],
+                        last_name=last_name,
+                        email=f"{role_data['name'].lower()}@{settings.DOMAIN}",
+                        password=hash_password("KtechHub2025"),
+                        phone_number=ghana_phone_number(),
+                        address=location,
+                        date_of_birth=fake.date_of_birth(
+                            minimum_age=18, maximum_age=60
+                        ),
+                        gender=fake.random_element(["male", "female"]),
+                        is_active=True,
+                        is_verified=True,
+                        verified_at=datetime.now(tz=timezone.utc),
+                        national_id=national_id,
+                        avatar=fake.image_url(),
+                    ),
+                )
+
+                # create user_role
+                await user_roles_crud.create(
+                    db=session,
+                    obj_in=UserRoleCreateSchema(
+                        role_uuid=role.uuid,
+                        user_uuid=user.uuid,
+                    ),
+                )
+
+                users.append(
+                    {
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "email": user.email,
+                        "role": role.name,
+                    }
+                )
+            else:
+                user = await user_crud.update(
+                    db=session,
+                    db_obj=user,
+                    obj_in=UserUpdateWithPasswordSchema(
+                        first_name=role_data["label"],
+                        last_name=last_name,
+                        password=hash_password("KtechHub2025"),
+                    ),
+                )
+                users.append(
+                    {
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "email": user.email,
+                        "role": role.name,
+                    }
+                )
+        print("users", users)
+        msg = (
+            f"*ktechhub::Users Sync Report*\n\n"
+            f"✅ Users Created: {len(users)}\n"
+            f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
         )
-        city = fake.random_element(ghana_cities)
-        location = f"{fake.street_address()}, {city}, Ghana"
-        national_id_prefix = f"{city[:3].upper()}"
-        national_id = f"{national_id_prefix}-{fake.random_number(digits=10)}-{fake.random_number(digits=1)}"
-        last_name = fake.last_name()
-        if not user:
-            # create user
-            user = await user_crud.create(
-                db=session,
-                obj_in=UserUpdateSchema(
-                    first_name=role_data["label"],
-                    last_name=last_name,
-                    email=f"{role_data['name'].lower()}@ktechhub.com",
-                    password=hash_password("GOP2025"),
-                    phone=ghana_phone_number(),
-                    location=location,
-                    date_of_birth=fake.date_of_birth(minimum_age=18, maximum_age=60),
-                    gender=fake.random_element(["male", "female"]),
-                    is_active=True,
-                    is_verified=True,
-                    verified_at=datetime.now(tz=timezone.utc),
-                    national_id=national_id,
-                    avatar=fake.image_url(),
-                ),
-            )
-
-            # create user_role
-            await user_roles_crud.create(
-                db=session,
-                obj_in=UserRoleCreateSchema(
-                    role_uuid=role.uuid,
-                    user_uuid=user.uuid,
-                ),
-            )
-
-            users.append(
-                {
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "email": user.email,
-                    "role": role.name,
-                }
-            )
-        else:
-            user = await user_crud.update(
-                db=session,
-                db_obj=user,
-                obj_in=UserUpdateSchema(
-                    first_name=role_data["label"],
-                    last_name=last_name,
-                    password=hash_password("GOP2025"),
-                ),
-            )
-            users.append(
-                {
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "email": user.email,
-                    "role": role.name,
-                }
-            )
-    print("users", users)
-    msg = (
-        f"*GOPSC::Users Sync Report*\n\n"
-        f"✅ Users Created: {len(users)}\n"
-        f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-    send_telegram_msg(msg=msg)
-    await session.close()
+        send_telegram_msg(msg=msg)
 
 
 async def main():
@@ -158,8 +149,8 @@ async def main():
         await sync_role_permissions()
         await asyncio.sleep(1)
         await create_test_users()
-        # await asyncio.sleep(1)
-        # await create_fake_users()
+        await asyncio.sleep(1)
+        await create_fake_users()
     except Exception as e:
         print(f"Error in main(): {e}")
 

@@ -1,22 +1,36 @@
 from typing import Dict, Generic, Tuple, Type, TypeVar, List, Optional, Any, Union
 from math import ceil
 from datetime import datetime, timezone
-from sqlalchemy import and_, asc, desc, func, or_, update, distinct, insert
-from sqlalchemy.orm import contains_eager
+from sqlalchemy import (
+    and_,
+    asc,
+    desc,
+    func,
+    or_,
+    update,
+    distinct,
+    insert,
+    String,
+    Text,
+)
+from sqlalchemy.orm import contains_eager, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm.attributes import InstrumentedAttribute
 from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
-from app.database.base import Base
+from ..database.base_class import Base
 from ..core.loggers import db_logger as logger
+from .cache_mixin import CacheMixin
+from ..core.config import settings
 
 ModelType = TypeVar("ModelType", bound="Base")  # type: ignore
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
-class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
-    def __init__(self, model: Type[ModelType]):
+class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixin):
+    def __init__(self, model: Type[ModelType], ttl: int = settings.CACHE_TTL_MEDIUM):
         """
         CRUD object with default methods to Create, Read, Update, Delete (CRUD).
 
@@ -25,6 +39,92 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         * `model`: A SQLAlchemy model class
         """
         self.model = model
+        # Initialize cache mixin
+        super().__init__(model_name=model.__name__.lower(), ttl=ttl)
+
+    def _get_identifier_field(self) -> Optional[InstrumentedAttribute]:
+        if hasattr(self.model, "uuid"):
+            return getattr(self.model, "uuid")
+        elif hasattr(self.model, "id"):
+            return getattr(self.model, "id")
+        else:
+            return None
+
+    def _get_identifier_field_name(self) -> Optional[Union[str, None]]:
+        if hasattr(self.model, "uuid"):
+            return "uuid"
+        elif hasattr(self.model, "id"):
+            return "id"
+        else:
+            return None
+
+    def _get_string_fields(self) -> List[str]:
+        """
+        Automatically detect string fields from the model for search functionality.
+
+        **Returns**
+        A list of field names that are string types (String, Text).
+        """
+        string_fields = []
+        for column in self.model.__table__.columns:
+            # Check if the column type is String or Text
+            if isinstance(column.type, (String, Text)):
+                string_fields.append(column.name)
+        return string_fields
+
+    def _resolve_related_field(self, field_path: str) -> Optional[Any]:
+        """
+        Resolve a field path that may include related model fields.
+
+        **Parameters**
+        * `field_path`: Field path like 'name', 'user.email', 'user.profile.bio'
+
+        **Returns**
+        The resolved column or None if not found or relationship doesn't exist.
+        """
+        if "." not in field_path:
+            # Direct field on current model
+            return getattr(self.model, field_path, None)
+
+        # Handle related fields (e.g., 'user.email')
+        parts = field_path.split(".")
+        current_model = self.model
+
+        # Navigate through relationships
+        for i, part in enumerate(parts[:-1]):
+            # Check if the part is a relationship
+            relationship_attr = getattr(current_model, part, None)
+            if relationship_attr is None:
+                logger.debug(
+                    f"Relationship '{part}' not found in model {current_model.__name__}"
+                )
+                return None
+
+            # Get the related model
+            if hasattr(relationship_attr, "property") and hasattr(
+                relationship_attr.property, "mapper"
+            ):
+                current_model = relationship_attr.property.mapper.class_
+            else:
+                logger.debug(
+                    f"Could not resolve related model for '{part}' in {current_model.__name__}"
+                )
+                return None
+
+        # Get the final field from the related model
+        final_field = parts[-1]
+        column = getattr(current_model, final_field, None)
+
+        if column and isinstance(column.type, (String, Text)):
+            return column
+        elif column:
+            logger.debug(
+                f"Field '{final_field}' in {current_model.__name__} is not a string type"
+            )
+            return None
+        else:
+            logger.debug(f"Field '{final_field}' not found in {current_model.__name__}")
+            return None
 
     def _build_filters(self, filters: Dict[str, Any]) -> List:
         """
@@ -35,9 +135,11 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         - Inclusion filters (IN operator)
         - Range filters (numeric and date ranges)
         - Boolean filters
-        - Full-text search (with `search` and `search_fields`)
+        - Full-text search (with `search` and `search_fields` or auto-detected string fields)
+        - Related field search (e.g., 'user.email', 'user.name')
         """
         filter_conditions = []
+        filters = {k: v for k, v in filters.items() if v is not None}
 
         # Regular field-based and inclusion filters (existing functionality)
         for field, value in filters.items():
@@ -84,20 +186,111 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 if column is not None:
                     filter_conditions.append(column.is_(value))
 
-        # Full-text search across multiple fields (e.g., search="john", search_fields=["name", "email"])
-        if "search" in filters and "search_fields" in filters:
+        # Full-text search across multiple fields
+        if "search" in filters:
             search_term = f"%{filters['search']}%"
             search_conditions = []
-            # This code snippet is performing a database query to retrieve multiple Role entities with
-            # their associated permissions eagerly loaded. Here's a breakdown of what each part does:
-            for field_name in filters["search_fields"]:
-                column = getattr(self.model, field_name, None)
-                if column:
-                    search_conditions.append(column.ilike(search_term))
-            if search_conditions:
-                filter_conditions.append(or_(*search_conditions))
+
+            # Use provided search_fields or auto-detect string fields
+            search_fields_raw = filters.get("search_fields", "")
+            if search_fields_raw:
+                # Parse comma-separated search fields
+                search_fields = [
+                    field.strip()
+                    for field in search_fields_raw.split(",")
+                    if field.strip()
+                ]
+                logger.debug(f"Using provided search fields: {search_fields}")
+            else:
+                # Auto-detect string fields from the model (only direct fields, not related)
+                search_fields = self._get_string_fields()
+                logger.debug(
+                    f"Auto-detected search fields for {self.model.__name__}: {search_fields}"
+                )
+
+            if search_fields:
+                for field_path in search_fields:
+                    # Try to resolve the field (could be direct or related)
+                    column = self._resolve_related_field(field_path)
+                    if column:
+                        search_conditions.append(column.ilike(search_term))
+
+                if search_conditions:
+                    filter_conditions.append(or_(*search_conditions))
+                    logger.debug(f"Added {len(search_conditions)} search conditions")
+                else:
+                    logger.warning(
+                        f"No valid search fields found for search term: {filters['search']}"
+                    )
+            else:
+                logger.warning(
+                    f"No search fields found for model {self.model.__name__}"
+                )
 
         return filter_conditions
+
+    def _build_fields(self, fields: Optional[Union[str, List[Any]]]) -> List[Any]:
+        """
+        Build SQLAlchemy field references from a comma-separated string or list of field names.
+
+        Parameters:
+        - fields: A comma-separated string or list of field names (e.g., "user,name,email,role.name,profile.is_active")
+
+        Returns:
+        - A list of SQLAlchemy column references (e.g., [User.name, Role.name])
+        """
+        if not fields:
+            return []
+
+        # Get identifier column (e.g., self.model.uuid or self.model.id)
+        identifier_field = self._get_identifier_field()
+
+        # Include default fields like id/uuid, created_at, updated_at if they exist
+        default_fields = [
+            identifier_field,
+            getattr(self.model, "created_at", None),
+            getattr(self.model, "updated_at", None),
+        ]
+        default_fields = [
+            f for f in default_fields if isinstance(f, InstrumentedAttribute)
+        ]
+
+        # If already a list of columns, return directly
+        if isinstance(fields, list) and all(hasattr(f, "table") for f in fields):
+            return fields
+
+        # Convert to list of field names
+        if isinstance(fields, str):
+            field_names = [f.strip() for f in fields.split(",") if f.strip()]
+        elif isinstance(fields, list):
+            field_names = fields
+        else:
+            return []
+
+        # Start with default fields
+        resolved_fields = list(default_fields)
+        field_keys = {f.key for f in resolved_fields}  # Track seen field keys
+
+        for field_path in field_names:
+            if "." in field_path:
+                relationship_name, field_name = field_path.split(".", 1)
+                relationship_attr = getattr(self.model, relationship_name, None)
+                if relationship_attr and hasattr(relationship_attr, "property"):
+                    related_model = relationship_attr.property.mapper.class_
+                    related_field = getattr(related_model, field_name, None)
+                    if isinstance(related_field, InstrumentedAttribute):
+                        label_name = f"{relationship_name}_{field_name}"
+                        if label_name not in field_keys:
+                            resolved_fields.append(related_field.label(label_name))
+                            field_keys.add(label_name)
+            else:
+                field = getattr(self.model, field_path, None)
+                if isinstance(field, InstrumentedAttribute):
+                    if field.key not in field_keys:
+                        resolved_fields.append(field.label(field_path))
+                        field_keys.add(field.key)
+
+        return resolved_fields
 
     def _extract_sort_params(
         self,
@@ -158,6 +351,45 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 return column
         return None
 
+    def _build_eager_load_from_relations(
+        self, include_relations: Optional[str]
+    ) -> List[Any]:
+        """
+        Build eager_load list from include_relations parameter.
+
+        **Parameters**
+        - `include_relations`: Comma-separated string of relation names (e.g., 'permissions,users')
+
+        **Returns**
+        List of SQLAlchemy relationship attributes to eager load
+        """
+        if not include_relations:
+            return []
+
+        eager_load = []
+        relation_names = [
+            name.strip() for name in include_relations.split(",") if name.strip()
+        ]
+
+        for relation_name in relation_names:
+            # Check if the relation exists on the model
+            if hasattr(self.model, relation_name):
+                relation_attr = getattr(self.model, relation_name)
+                # Verify it's actually a relationship
+                if hasattr(relation_attr, "property") and hasattr(
+                    relation_attr.property, "mapper"
+                ):
+                    eager_load.append(relation_attr)
+                else:
+                    logger.warning(
+                        f"'{relation_name}' is not a valid relationship on {self.model.__name__}"
+                    )
+            else:
+                logger.warning(
+                    f"Relationship '{relation_name}' not found on {self.model.__name__}"
+                )
+        return eager_load
+
     async def get(
         self,
         db: AsyncSession,
@@ -166,10 +398,11 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         models: Optional[List[Type[Base]]] = None,  # type: ignore
         joins: Optional[List[Tuple[Any, Any]]] = None,
         eager_load: Optional[List[Any]] = None,
-        fields: Optional[List[Any]] = None,
+        fields: Optional[Union[str, List[Any]]] = None,
         sort: Optional[str] = None,
         query_filters: Optional[List[Any]] = None,
         group_by: Optional[List[Any]] = None,
+        include_relations: Optional[str] = None,
         **filters: Any,
     ) -> Any:
         """
@@ -185,6 +418,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         - `sort`: A comma-separated list of fields to sort by (default is None).
         - `query_filters`: List of SQLAlchemy-style filters to apply (default is None).
         - `group_by`: List of fields to group the query by (default is None).
+        - `include_relations`: Comma-separated string of relation names to eager load (e.g., 'permissions,users')
         - `**filters`: Keyword arguments for dynamic filtering.
 
         **Returns**
@@ -206,7 +440,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db=session,
             models=[Profile],
             joins=[(User.id == Profile.user_id)],
-            eager_load=[User.user_roles],
+            eager_load=[User.user_role],
             fields=[User.id, User.email, Profile.bio],
             sort="email:asc",
             email="test@example.com"
@@ -246,7 +480,20 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # Default query construction for basic queries
         models = models or [self.model]
-        query = select(*fields) if fields else select(*models)
+        # Build fields if provided
+        resolved_fields = self._build_fields(fields) if fields else None
+
+        # Build eager_load from include_relations if provided
+        if include_relations and not eager_load:
+            eager_load = self._build_eager_load_from_relations(include_relations)
+        elif include_relations and eager_load:
+            # Merge both eager_load lists
+            additional_eager_load = self._build_eager_load_from_relations(
+                include_relations
+            )
+            eager_load.extend(additional_eager_load)
+
+        query = select(*resolved_fields) if resolved_fields else select(*models)
 
         # Build filters
         filter_conditions = self._build_filters(filters)
@@ -263,8 +510,16 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # Apply eager loading
         if eager_load:
-            for relationship in eager_load:
-                query = query.options(joinedload(relationship))
+            if resolved_fields:
+                # When specific fields are selected, we can't use eager loading
+                # because it conflicts with expression-based queries
+                logger.warning(
+                    f"Skipping eager loading for {len(eager_load)} relationships because specific fields are selected"
+                )
+            else:
+                # When selecting full models, we can use joinedload
+                for relationship in eager_load:
+                    query = query.options(joinedload(relationship))
 
         # Apply sorting
         if sort:
@@ -289,7 +544,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         models: Optional[List[Type[Base]]] = None,  # type: ignore
         joins: Optional[List[Tuple[Any, Any]]] = None,
         eager_load: Optional[List[Any]] = None,
-        fields: Optional[List[Any]] = None,
+        fields: Optional[Union[str, List[Any]]] = None,
         sort: Optional[str] = "",
         query_filters: Optional[List[Any]] = None,
         group_by: Optional[List[Any]] = None,
@@ -297,6 +552,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         distinct_fields: Optional[List[Any]] = None,
         is_distinct: Optional[bool] = False,
         return_rows: Optional[bool] = False,
+        include_relations: Optional[str] = None,
         **filters: Any,
     ) -> Dict[str, Any]:
         """
@@ -317,6 +573,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             - `unique_records`: Flag to return only unique records (default is False).
             - `is_distinct`: Flag to apply distinct on the query (default is False).
             - `distinct_fields`: List of fields to use for distinct records (default is None).
+            - `include_relations`: Comma-separated string of relation names to eager load (e.g., 'permissions,users')
             - `**filters`: Keyword arguments for filtering.
 
             **Returns**
@@ -342,7 +599,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 db=session,
                 models=[Profile],
                 joins=[(User.id == Profile.user_id)],
-                eager_load=[User.user_roles],
+                eager_load=[User.user_role],
                 fields=[User.id, User.email, Profile.bio],
                 sort="email:asc",
                 skip=0,
@@ -381,6 +638,14 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                     "search_fields": ["first_name", "last_name", "email"]
                 }
             )
+
+            # Example with include_relations
+            result = await role_crud.get_multi(
+                db=session,
+                skip=0,
+                limit=10,
+                include_relations="permissions,users"
+            )
             ```
         """
         if skip < 0:
@@ -392,11 +657,21 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if sort:
             sort_params = self._extract_sort_params(sort, models)
 
+        # Build fields if provided
+        resolved_fields = self._build_fields(fields) if fields else None
+
+        # Build eager_load from include_relations if provided
+        if include_relations and not eager_load:
+            eager_load = self._build_eager_load_from_relations(include_relations)
+        elif include_relations and eager_load:
+            # Merge both eager_load lists
+            additional_eager_load = self._build_eager_load_from_relations(
+                include_relations
+            )
+            eager_load.extend(additional_eager_load)
+
         # If a custom statement is provided, execute it directly
         if statement is not None:
-            count_query = select(func.count()).select_from(statement.subquery())
-            total_count_result = await db.execute(count_query)
-            total_count = total_count_result.scalar()
 
             statement = statement.offset(skip)
             # Apply pagination to the statement
@@ -408,6 +683,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
             if sort_params:
                 statement = statement.order_by(*sort_params)
+
+            count_query = select(func.count()).select_from(statement.subquery())
+            total_count_result = await db.execute(count_query)
+            total_count = total_count_result.scalar()
 
             # Execute the query
             result = await db.execute(statement)
@@ -423,7 +702,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # Default query construction
         models = models or [self.model]
-        query = select(*fields) if fields else select(*models)
+        query = select(*resolved_fields) if resolved_fields else select(*models)
 
         if query_filters:
             filter_conditions.extend(query_filters)
@@ -438,8 +717,16 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # Apply eager loading
         if eager_load:
-            for relationship in eager_load:
-                query = query.options(contains_eager(relationship))
+            if resolved_fields:
+                # When specific fields are selected, we can't use eager loading
+                # because it conflicts with expression-based queries
+                logger.warning(
+                    f"Skipping eager loading for {len(eager_load)} relationships because specific fields are selected"
+                )
+            else:
+                # When selecting full models, we can use joinedload
+                for relationship in eager_load:
+                    query = query.options(joinedload(relationship))
 
         # Apply grouping
         if group_by:
@@ -459,13 +746,19 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # Execute the query
         result = await db.execute(query)
-        items = (
-            result.scalars().unique().all()
-            if unique_records
-            else result.scalars().all()
-        )
 
-        # Get the total count of matching records
+        if resolved_fields:
+            data = [
+                {field.name: value for field, value in zip(resolved_fields, row)}
+                for row in result.all()
+            ]
+        else:
+            data = (
+                result.scalars().unique().all()
+                if unique_records
+                else result.scalars().all()
+            )
+
         count_query = select(func.count()).select_from(self.model)
         if filter_conditions:
             count_query = count_query.where(and_(*filter_conditions))
@@ -473,9 +766,11 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         total_count_result = await db.execute(count_query)
         total_count = total_count_result.scalar()
 
-        return {"data": items, "total_count": total_count}
+        return {"data": data, "total_count": total_count}
 
-    async def create(self, db: AsyncSession, *, obj_in: CreateSchemaType) -> ModelType:
+    async def create(
+        self, db: AsyncSession, *, obj_in: Union[CreateSchemaType, Dict[str, Any]]
+    ) -> ModelType:
         """
         Create a new record in the database.
 
@@ -498,11 +793,17 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         )
         ```
         """
-        db_obj = self.model(**obj_in.model_dump())
+        if isinstance(obj_in, dict):
+            db_obj = self.model(**obj_in)
+        else:
+            db_obj = self.model(**obj_in.model_dump())
+
         try:
             db.add(db_obj)
             await db.commit()
             await db.refresh(db_obj)
+            # Invalidate cache after successful creation
+            self.invalidate_cache_with_dependencies()
             return db_obj
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
@@ -510,7 +811,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             raise RuntimeError(f"Error creating object: {e}")
 
     async def create_multi(
-        self, db: AsyncSession, *, objs_in: List[CreateSchemaType]
+        self,
+        db: AsyncSession,
+        *,
+        objs_in: List[Union[CreateSchemaType, Dict[str, Any]]],
     ) -> List[ModelType]:
         """
         Create multiple records in a single database transaction.
@@ -537,7 +841,12 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             return []
 
         # Convert Pydantic models to SQLAlchemy models
-        db_objs = [self.model(**obj_in.model_dump()) for obj_in in objs_in]
+        db_objs = []
+        for obj_in in objs_in:
+            if isinstance(obj_in, dict):
+                db_objs.append(self.model(**obj_in))
+            else:
+                db_objs.append(self.model(**obj_in.model_dump()))
 
         try:
             # Add all objects in a single batch operation
@@ -548,6 +857,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             for db_obj in db_objs:
                 await db.refresh(db_obj)
 
+            # Invalidate cache after successful creation
+            self.invalidate_cache_with_dependencies()
             return db_objs
         except Exception as e:
             await db.rollback()  # Rollback the transaction on failure
@@ -558,9 +869,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self,
         db: AsyncSession,
         *,
-        objs_in: List[CreateSchemaType],
+        objs_in: List[Union[CreateSchemaType, Dict[str, Any]]],
         batch_size: int = 200,
-    ) -> None:
+    ) -> bool:
         """
         Bulk insert multiple records in batches for optimized performance and stability.
 
@@ -584,11 +895,16 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         ```
         """
         if not objs_in:
-            return
+            return False
 
         try:
             # Convert Pydantic models to dictionaries
-            db_objs_data = [obj_in.model_dump() for obj_in in objs_in]
+            db_objs_data = []
+            for obj_in in objs_in:
+                if isinstance(obj_in, dict):
+                    db_objs_data.append(obj_in)
+                else:
+                    db_objs_data.append(obj_in.model_dump())
 
             # Calculate the number of batches needed
             total_batches = ceil(len(db_objs_data) / batch_size)
@@ -605,6 +921,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             # Commit all inserts
             await db.commit()
 
+            # Invalidate cache after successful bulk creation
+            self.invalidate_cache_with_dependencies()
             return True
 
         except Exception as e:
@@ -616,7 +934,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         db: AsyncSession,
         *,
         db_obj: Optional[ModelType] = None,
-        obj_in: Optional[UpdateSchemaType] = None,
+        obj_in: Optional[Union[UpdateSchemaType, Dict[str, Any]]] = None,
         statement: Optional[Any] = None,
         allow_null: bool = False,
     ) -> Optional[ModelType]:
@@ -667,7 +985,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         # Object-based update logic
         if db_obj and obj_in:
             obj_data = db_obj.__dict__
-            update_data = obj_in.model_dump()
+            if isinstance(obj_in, dict):
+                update_data = obj_in
+            else:
+                update_data = obj_in.model_dump()
 
             for field in obj_data:
                 if field in update_data:
@@ -679,6 +1000,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 db.add(db_obj)
                 await db.commit()
                 await db.refresh(db_obj)
+                # Invalidate cache after successful update
+                self.invalidate_cache_with_dependencies()
                 return db_obj
             except Exception as e:
                 await db.rollback()  # Rollback on failure to avoid partial commits
@@ -693,7 +1016,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self,
         db: AsyncSession,
         *,
-        updates: Optional[List[Dict[str, Any]]] = None,
+        updates: Optional[List[Union[Dict[str, Any], Dict[str, Any]]]] = None,
         statement: Optional[Any] = None,
         allow_null: bool = False,
     ) -> int:
@@ -734,6 +1057,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             # Execute custom update statement
             result = await db.execute(statement)
             await db.commit()
+            # Invalidate cache after successful update
+            self.invalidate_cache_with_dependencies()
             return result.rowcount
 
         # Default bulk update logic (update records using filters and data)
@@ -741,7 +1066,10 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             updated_count = 0
             for update_info in updates:
                 filters = update_info.get("filters")
-                update_data = update_info.get("data")
+                if isinstance(update_info, dict):
+                    update_data = update_info.get("data")
+                else:
+                    update_data = update_info
 
                 if not filters or not update_data:
                     continue
@@ -764,6 +1092,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 updated_count += result.rowcount
 
             await db.commit()
+            # Invalidate cache after successful bulk update
+            self.invalidate_cache_with_dependencies()
             return updated_count
 
         return 0
@@ -806,7 +1136,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         ```
         """
         models = models or [self.model]
-        query = select(*fields) if fields else select(*models)
+        # Build fields if provided
+        resolved_fields = self._build_fields(fields) if fields else None
+        query = select(*resolved_fields) if resolved_fields else select(*models)
 
         # Build dynamic filter conditions
         filter_conditions = [
@@ -839,6 +1171,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             # Delete the record
             await db.delete(obj)
             await db.commit()
+            # Invalidate cache after successful deletion
+            self.invalidate_cache_with_dependencies()
 
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
@@ -884,7 +1218,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         ```
         """
         models = models or [self.model]
-        query = select(*fields) if fields else select(*models)
+        # Build fields if provided
+        resolved_fields = self._build_fields(fields) if fields else None
+        query = select(*resolved_fields) if resolved_fields else select(*models)
 
         # Build dynamic filter conditions
         filter_conditions = self._build_filters(filters)
@@ -917,6 +1253,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 await db.delete(obj)
 
             await db.commit()
+            # Invalidate cache after successful bulk deletion
+            self.invalidate_cache_with_dependencies()
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
             logger.error(f"Error deleting: {e}")
@@ -948,6 +1286,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             try:
                 result = await db.execute(statement)
                 await db.commit()
+                # Invalidate cache after successful soft delete
+                self.invalidate_cache_with_dependencies()
                 return None  # No specific object is returned for statement updates
             except Exception as e:
                 await db.rollback()
@@ -964,6 +1304,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
                 db.add(db_obj)
                 await db.commit()
                 await db.refresh(db_obj)
+                # Invalidate cache after successful soft delete
+                self.invalidate_cache_with_dependencies()
                 return db_obj
             except Exception as e:
                 await db.rollback()
@@ -1003,6 +1345,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             db.add(db_obj)
             await db.commit()
             await db.refresh(db_obj)
+            # Invalidate cache after successful restoration
+            self.invalidate_cache_with_dependencies()
             return db_obj
         except Exception as e:
             await db.rollback()

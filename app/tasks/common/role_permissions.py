@@ -8,22 +8,13 @@ from app.cruds.roles import role_crud
 from app.cruds.role_permissions import role_permission_crud
 from app.schemas.role_permissions import RolePermissionUpdateSchema
 from app.utils.telegram import send_telegram_msg
-from .defaults import default_role_permissions
+from ...core.defaults import default_role_permissions
 from app.core.loggers import scheduler_logger
-
-
-engine = create_async_engine(settings.DATABASE_URL, pool_size=200, pool_pre_ping=True)
-SessionLocal = sessionmaker(
-    engine,
-    autocommit=False,
-    autoflush=False,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+from app.database.get_session import AsyncSessionLocal
 
 
 async def sync_role_permissions():
-    async with SessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         created_count = 0
         updated_count = 0
 
@@ -81,7 +72,7 @@ async def sync_role_permissions():
             f"Sync complete: {created_count} role-permissions created, {updated_count} updated."
         )
     msg = (
-        f"*GOPSC::Role Permissions Sync Report*\n\n"
+        f"*ktechhub::Role Permissions Sync Report*\n\n"
         f"✅ Items Created: {created_count}\n"
         f"✅ Items Updated: {updated_count}\n"
         f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"

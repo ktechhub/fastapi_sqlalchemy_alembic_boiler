@@ -31,7 +31,7 @@ class RoleCreateSchema(RoleBaseSchema):
     pass  # All fields from the base schema are required for creation
 
 
-class RoleUpdateSchema(RoleBaseSchema):
+class RoleUpdateSchema(BaseModel):
     name: Optional[str] = Field(None, description="The unique name of the role")
     label: Optional[str] = Field(
         None, description="A human-readable label for the role"
@@ -44,7 +44,11 @@ class RoleUpdateSchema(RoleBaseSchema):
     )
 
 
-class RoleSchema(RoleBaseSchema, BaseUUIDSchema):
+class RoleWithOutPermissionsSchema(RoleBaseSchema, BaseUUIDSchema):
+    pass
+
+
+class RoleSchema(RoleWithOutPermissionsSchema):
     permissions: Optional[List[PermissionSchema]] = None
 
 
@@ -60,7 +64,7 @@ class RoleTotalCountListResponseSchema(BaseTotalCountResponseSchema):
     data: Optional[List[RoleSchema]] = None
 
 
-class RoleFilters(BaseFilters, RoleBaseSchema, BaseUUIDSchema):
+class RoleFilters(BaseFilters, BaseUUIDSchema):
     name: Optional[str] = Field(None, description="Filter by the role name")
     label: Optional[str] = Field(None, description="Filter by the role label")
     description: Optional[str] = Field(
@@ -72,4 +76,20 @@ class RoleFilters(BaseFilters, RoleBaseSchema, BaseUUIDSchema):
     exclude: Optional[str] = Field(
         None,
         description="Comma-separated list of role names to exclude from the results",
+    )
+    include_relations: Optional[str] = Field(
+        "permissions",
+        description="A comma-separated list of related models to include in the result set (e.g., 'permissions,users')",
+        example="permissions,users",
+    )
+
+
+class RoleWithPermissionsSchema(RoleBaseSchema):
+    permissions: List[str] = []
+
+
+class RoleWithPermissionsUpdateSchema(RoleUpdateSchema):
+    permissions: List[str] = Field(
+        None,
+        description="List of permission UUIDs associated with the role",
     )

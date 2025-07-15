@@ -1,12 +1,11 @@
 """initial
 
-Revision ID: 448ec0152e1f
+Revision ID: 82d7e608eb37
 Revises:
-Create Date: 2025-03-15 08:31:31.747182
+Create Date: 2025-06-17 16:49:09.019988
 
 """
 
-import datetime
 from typing import Sequence, Union
 
 from alembic import op
@@ -14,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "448ec0152e1f"
+revision: str = "82d7e608eb37"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -86,16 +85,16 @@ def upgrade() -> None:
         sa.Column("last_name", sa.String(length=130), nullable=False),
         sa.Column("email", sa.String(length=100), nullable=False),
         sa.Column("password", sa.String(length=255), nullable=True),
-        sa.Column("phone", sa.String(length=20), nullable=True),
+        sa.Column("phone_number", sa.String(length=20), nullable=True),
         sa.Column("gender", sa.String(length=10), nullable=True),
-        sa.Column("location", sa.Text(), nullable=True),
+        sa.Column("address", sa.Text(), nullable=True),
         sa.Column("date_of_birth", sa.Date(), nullable=True),
         sa.Column("avatar", sa.Text(), nullable=True),
         sa.Column("national_id", sa.String(length=50), nullable=True),
+        sa.Column("digital_address", sa.String(length=50), nullable=True),
+        sa.Column("status", sa.String(length=20), nullable=True),
         sa.Column("is_verified", sa.Boolean(), nullable=False),
-        sa.Column(
-            "verified_at", sa.DateTime(timezone=datetime.timezone.utc), nullable=True
-        ),
+        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("uuid", sa.String(length=36), nullable=False),
         sa.Column("views", sa.BigInteger(), nullable=False),
@@ -205,11 +204,11 @@ def upgrade() -> None:
     )
     op.create_table(
         "verification_codes",
-        sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("code", sa.String(length=8), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("type", sa.String(length=50), nullable=False),
         sa.Column("user_uuid", sa.String(length=36), nullable=False),
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("views", sa.BigInteger(), nullable=False),
         sa.Column(
@@ -238,9 +237,6 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
-        op.f("ix_verification_codes_id"), "verification_codes", ["id"], unique=False
-    )
-    op.create_index(
         op.f("ix_verification_codes_updated_at"),
         "verification_codes",
         ["updated_at"],
@@ -254,7 +250,6 @@ def downgrade() -> None:
     op.drop_index(
         op.f("ix_verification_codes_updated_at"), table_name="verification_codes"
     )
-    op.drop_index(op.f("ix_verification_codes_id"), table_name="verification_codes")
     op.drop_index(
         op.f("ix_verification_codes_created_at"), table_name="verification_codes"
     )

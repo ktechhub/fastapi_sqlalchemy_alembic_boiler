@@ -24,7 +24,7 @@ class UserRole(Base, BaseUUIDModelMixin):
     )
 
     role: Mapped["Role"] = relationship(
-        "Role", back_populates="user_roles", overlaps="roles"
+        "Role", back_populates="user_roles", overlaps="users"
     )
     user: Mapped["User"] = relationship(
         "User", back_populates="user_roles", overlaps="roles"

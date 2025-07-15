@@ -14,25 +14,19 @@ class Settings(BaseSettings):
     ENV: str = "local"
 
     SERVICE_NAME: str = "ktechhub"
-
+    DOMAIN: str = "ktechhub.com"
     FRONTEND_URL: str = "https://dev.ktechhub.com"
     BASE_API_URL: str = "https://api.ktechhub.com"
 
-    if ENV == "local":
-        RELOAD: bool = True
-        LOG_LEVEL: str = "debug"
-    else:
-        RELOAD: bool = False
-        LOG_LEVEL: str = "info"
-
     ALLOWED_HOSTS: str = "*"
 
-    MAIL_USERNAME: str
-    MAIL_PASSWORD: str
-    MAIL_FROM: str
-    MAIL_PORT: int
-    MAIL_SERVER: str
-    MAIL_FROM_NAME: str
+    EMAIL_SERVICE: str = "custom"  # custom, mailjet, sendgrid
+    MAIL_USERNAME: str = "no-reply@ktechhub.com"
+    MAIL_PASSWORD: str = ""
+    MAIL_FROM: str = "no-reply@ktechhub.com"
+    MAIL_PORT: int = 587
+    MAIL_SERVER: str = "smtp.gmail.com"
+    MAIL_FROM_NAME: str = "Ktechhub"
 
     DB_USER: str = "root"
     DB_PASSWORD: str = "root"
@@ -46,7 +40,16 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_USERNAME: str = "default"
     REDIS_PASSWORD: str
+    REDIS_URL: str = ""
     QUEUE_NAMES: str = "general"
+    MAX_REDIS_QUEUE_RETRIES: int = 3
+
+    # Cache Settings
+    CACHE_ENABLED: bool = True
+    CACHE_TTL_SHORT: int = 300  # 5 minutes
+    CACHE_TTL_MEDIUM: int = 1800  # 30 minutes
+    CACHE_TTL_LONG: int = 3600  # 1 hour
+    CACHE_TTL_VERY_LONG: int = 86400  # 24 hours
 
     # JWT Settings
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
@@ -57,15 +60,23 @@ class Settings(BaseSettings):
 
     # S3 Configuration
     S3_STORAGE_BUCKET: str = ""
-    S3_STORAGE_HOST: str
-    S3_STORAGE_ACCESS_KEY: str
-    S3_STORAGE_SECRET_KEY: str
+    S3_STORAGE_HOST: str = ""
+    S3_STORAGE_ACCESS_KEY: str = ""
+    S3_STORAGE_SECRET_KEY: str = ""
 
-    TELEGRAM_CHAT_ID: str
-    TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_CHAT_ID: str = ""
+    TELEGRAM_BOT_TOKEN: str = ""
 
-    MEILI_SEARCH_URL: str = "https://meilisearch.dev.ktechhub.com/"
-    MEILI_SEARCH_API_KEY: str
+    # Meilisearch Configuration
+    MEILI_SEARCH_URL: str = ""
+    MEILI_SEARCH_API_KEY: str = ""
+
+    MAILJET_API_KEY: str = ""
+    MAILJET_API_SECRET: str = ""
+
+    SENDGRID_API_KEY: str = ""
+
+    SENTRY_DSN: str = ""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -87,3 +98,6 @@ if not settings.DATABASE_URL:
         settings.DATABASE_URL = f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
     else:
         raise ValueError(f"Unsupported database engine: {settings.DB_ENGINE}")
+
+if not settings.REDIS_URL:
+    settings.REDIS_URL = f"redis://{settings.REDIS_USERNAME}:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}"

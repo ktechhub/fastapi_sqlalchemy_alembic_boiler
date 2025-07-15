@@ -14,7 +14,6 @@
     - [Setup](#setup)
   - [Running with Docker](#running-with-docker)
   - [API Documentation](#api-documentation)
-  - [Environment Variables](#environment-variables)
   - [Running Tests](#running-tests)
   - [Alembic Commands](#alembic-commands)
   - [License](#license)
@@ -49,28 +48,136 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
 - **Celery** (Task queue, optional)
 
 ## Project Structure
-```plaintext
+```sh
 .
+├── alembic
+│   ├── env.py
+│   ├── README
+│   ├── script.py.mako
+│   └── versions
+├── alembic_cli.py
+├── alembic.ini
+├── app
+│   ├── __init__.py
+│   ├── api
+│   │   ├── __init__.py
+│   │   └── v1
+│   │       ├── __init__.py
+│   │       ├── auth
+│   │       │   ├── __init__.py
+│   │       │   ├── auth.py
+│   │       │   ├── permissions.py
+│   │       │   ├── profile.py
+│   │       │   ├── referesh_token.py
+│   │       │   ├── role_permissions.py
+│   │       │   ├── roles.py
+│   │       │   ├── router.py
+│   │       │   ├── user_roles.py
+│   │       │   └── users.py
+│   │       ├── logs
+│   │       │   ├── __init__.py
+│   │       │   ├── activity_logs.py
+│   │       │   ├── router.py
+│   │       │   └── system_logs.py
+│   │       └── router.py
+│   ├── core
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   ├── constants.py
+│   │   ├── defaults.py
+│   │   ├── languages.py
+│   │   └── loggers.py
+│   ├── cruds
+│   │   ├── __init__.py
+│   │   ├── activity_logs.py
+│   │   ├── base.py
+│   │   ├── codes.py
+│   │   ├── mixins.py
+│   │   ├── permissions.py
+│   │   ├── role_permissions.py
+│   │   ├── roles.py
+│   │   ├── user_roles.py
+│   │   └── users.py
+│   ├── database
+│   │   ├── __init__.py
+│   │   ├── base_class.py
+│   │   └── get_session.py
+│   ├── deps
+│   │   ├── __init__.py
+│   │   └── user.py
+│   ├── mails
+│   │   ├── __init__.py
+│   │   ├── contents.py
+│   │   ├── email_service.py
+│   │   └── templates
+│   │       └── email.html
+│   ├── main.py
+│   ├── media
+│   ├── models
+│   │   ├── __init__.py
+│   │   ├── activity_logs.py
+│   │   ├── base_mixins.py
+│   │   ├── codes.py
+│   │   ├── permissions.py
+│   │   ├── role_permissions.py
+│   │   ├── roles.py
+│   │   ├── user_roles.py
+│   │   └── users.py
+│   ├── schemas
+│   │   ├── __init__.py
+│   │   ├── activity_logs.py
+│   │   ├── base_filters.py
+│   │   ├── base_schema.py
+│   │   ├── logs.py
+│   │   ├── permissions.py
+│   │   ├── role_permissions.py
+│   │   ├── roles.py
+│   │   ├── tokens.py
+│   │   ├── user_deps.py
+│   │   ├── user_roles.py
+│   │   ├── users.py
+│   │   └── verification_codes.py
+│   ├── services
+│   │   ├── __init__.py
+│   │   ├── meili_search.py
+│   │   ├── poison_queue.py
+│   │   ├── redis_base.py
+│   │   ├── redis_main.py
+│   │   ├── redis_operations.py
+│   │   └── redis_push.py
+│   ├── static
+│   ├── tasks
+│   │   ├── __init__.py
+│   │   ├── common
+│   │   │   ├── __init__.py
+│   │   │   ├── fake_users.py
+│   │   │   ├── permissions.py
+│   │   │   ├── role_permissions.py
+│   │   │   └── roles.py
+│   │   └── scheduler.py
+│   ├── tests
+│   │   └── __init__.py
+│   └── utils
+│       ├── __init__.py
+│       ├── code.py
+│       ├── object_storage.py
+│       ├── password_util.py
+│       ├── responses.py
+│       ├── schema_as_form.py
+│       ├── security_util.py
+│       └── telegram.py
+├── delayed_msgs.Dockerfile
+├── delayed_msgs.py
+├── dev.docker-compose.yml
+├── docker-compose.yml
 ├── Dockerfile
 ├── LICENSE
+├── logs
 ├── README.md
-├── alembic/                   # Database migrations
-├── app/
-│   ├── api/v1/                # API routes
-│   ├── core/                  # Core configurations and logging
-│   ├── cruds/                 # Database interaction layer
-│   ├── database/              # Database setup and connections
-│   ├── deps/                  # Dependencies and utilities
-│   ├── mails/                 # Email sending service
-│   ├── models/                # ORM models
-│   ├── schemas/               # Pydantic schemas for validation
-│   ├── tasks/                 # Background tasks and scheduled jobs
-│   ├── tests/                 # Unit tests
-│   ├── utils/                 # Utility functions
-│   └── main.py                # Application entry point
-├── docker-compose.yml
-├── requirements.txt           # Python dependencies
-└── test_users.py
+├── redis_main.Dockerfile
+├── requirements.txt
+├── test_users.py
+└── test.py
 ```
 
 ## Installation
@@ -94,13 +201,25 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
    ```sh
    pip install -r requirements.txt
    ```
-4. **Run database migrations:**
+4. **Copy .env and update values:**
    ```sh
-   alembic upgrade head
+   cp .env.example .env
    ```
-5. **Start the application:**
+5. **Run database migrations:**
+   ```sh
+   python alembic_cli.py upgrade
+   ```
+6. **Start the application:**
    ```sh
    uvicorn app.main:app --reload
+   ```
+7. **Start the RedisMessageProcessor:**
+   ```sh
+   python -m app.services.redis_main
+   ```
+8. **Start the DelayedMessageProcessor:**
+   ```sh
+   python delayed_msgs.py
    ```
 
 ## Running with Docker
@@ -113,42 +232,6 @@ Once the application is running, the API docs can be accessed at:
 - **Swagger UI:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - **ReDoc:** [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 
-## Environment Variables
-Create a `.env` file with the following variables:
-```ini
-API_VERSION
-ENV
-ALLOWED_HOSTS
-MAIL_USERNAME
-MAIL_PASSWORD
-MAIL_FROM
-MAIL_PORT
-MAIL_SERVER
-MAIL_FROM_NAME
-REDIS_PASSWORD
-REDIS_USERNAME
-REDIS_PORT
-REDIS_HOST
-QUEUE_NAMES
-DB_USER
-DB_PASSWORD
-DB_HOST
-DB_PORT
-DB_NAME
-DB_ENGINE
-JWT_SECRET_KEY
-JWT_REFRESH_SECRET_KEY
-S3_STORAGE_BUCKET
-S3_STORAGE_HOST
-S3_STORAGE_ACCESS_KEY
-S3_STORAGE_SECRET_KEY
-TELEGRAM_CHAT_ID
-TELEGRAM_BOT_TOKEN
-SERVICE_NAME
-MEILI_SEARCH_URL
-MEILI_SEARCH_API_KEY
-```
-
 ## Running Tests
 ```sh
 pytest
@@ -158,15 +241,15 @@ pytest
 
 1. Create a new migration:
     ```bash
-    alembic revision --autogenerate -m "description of change"
+    python alembic_cli.py revision --message "description of change"
     ```
 2. Apply migrations:
     ```bash
-    alembic upgrade head
+    python alembic_cli.py upgrade
     ```
 3. Revert migrations:
     ```bash
-    alembic downgrade -1
+    python alembic_cli.py downgrade base
     ```
 4. Check current migration:
     ```bash

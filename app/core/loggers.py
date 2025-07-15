@@ -67,7 +67,6 @@ class SetupLogger:
         self,
         logger_name,
         log_file,
-        meili_client=None,
         meili_index=None,
         use_size_rotation=True,
         use_time_rotation=True,
@@ -130,14 +129,21 @@ class SetupLogger:
             self.logger.addHandler(time_handler)
 
         # Meilisearch setup (optional)
-        self.meili_enabled = meili_client is not None and meili_index is not None
-        if self.meili_enabled:
-            self.meili_client = meili_client
+        if settings.MEILI_SEARCH_URL != "" and settings.MEILI_SEARCH_API_KEY != "":
+            meili_client = meilisearch.Client(
+                settings.MEILI_SEARCH_URL, settings.MEILI_SEARCH_API_KEY
+            )
+            self.meili_enabled = True
             self.meili_index = meili_client.index(meili_index)
             # Ensure timestamp is filterable
             self.meili_index.update_filterable_attributes(
                 ["timestamp", "level", "service", "logger_name"]
             )
+            self.meili_index.update_sortable_attributes(
+                ["timestamp", "level", "service", "logger_name"]
+            )
+        else:
+            self.meili_enabled = False
 
     def _log_to_meilisearch(self, level, message):
         """
@@ -177,19 +183,11 @@ class SetupLogger:
         self._log_to_meilisearch("CRITICAL", message)
 
 
-# Create Meilisearch client if configured
-meili_client = None
-if hasattr(settings, "MEILI_SEARCH_URL") and hasattr(settings, "MEILI_SEARCH_API_KEY"):
-    meili_client = meilisearch.Client(
-        getattr(settings, "MEILI_SEARCH_URL"), getattr(settings, "MEILI_SEARCH_API_KEY")
-    )
-
 # Create Base loggers with both rotation types
 app_logger = SetupLogger(
     "app_logger",
     "logs/app_logger.log",
-    meili_client,
-    "logs",
+    meili_index="logs",
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -197,8 +195,7 @@ app_logger = SetupLogger(
 db_logger = SetupLogger(
     "db_logger",
     "logs/db_logger.log",
-    meili_client,
-    "logs",
+    meili_index="logs",
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -206,8 +203,7 @@ db_logger = SetupLogger(
 security_logger = SetupLogger(
     "security_logger",
     "logs/security_logger.log",
-    meili_client,
-    "logs",
+    meili_index="logs",
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -215,8 +211,7 @@ security_logger = SetupLogger(
 scheduler_logger = SetupLogger(
     "scheduler_logger",
     "logs/scheduler_logger.log",
-    meili_client,
-    "logs",
+    meili_index="logs",
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -224,8 +219,7 @@ scheduler_logger = SetupLogger(
 redis_logger = SetupLogger(
     "redis_logger",
     "logs/redis_logger.log",
-    meili_client,
-    "logs",
+    meili_index="logs",
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs

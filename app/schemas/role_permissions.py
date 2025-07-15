@@ -1,12 +1,12 @@
-from typing import Any, Dict, List, Optional, Union, Literal
-from pydantic import UUID4, BaseModel
+from typing import Any, Dict, List, Optional, Union
+from pydantic import UUID4, BaseModel, Field
 from .base_schema import (
     BaseUUIDSchema,
     BaseResponseSchema,
     BaseTotalCountResponseSchema,
 )
 from .permissions import PermissionSchema
-from .roles import RoleSchema
+from .roles import RoleWithOutPermissionsSchema
 from .base_filters import BaseFilters
 
 """RolePermission Schema"""
@@ -26,7 +26,7 @@ class RolePermissionUpdateSchema(RolePermissionBaseSchema):
 
 
 class RolePermissionSchema(RolePermissionBaseSchema, BaseUUIDSchema):
-    role: Optional[Union[RoleSchema, Dict, Any]] = None
+    role: Optional[Union[RoleWithOutPermissionsSchema, Dict, Any]] = None
     permission: Optional[Union[PermissionSchema, Dict, Any]] = None
 
 
@@ -50,3 +50,13 @@ class RolePermissionTotalCountListResponseSchema(BaseTotalCountResponseSchema):
 class RolePermissionFilters(BaseFilters):
     role_uuid: Optional[UUID4 | str] = None
     permission_uuid: Optional[UUID4 | str] = None
+    include_relations: Optional[str] = Field(
+        "role,permission",
+        description="A comma-separated list of related models to include in the result set (e.g., 'role,permission')",
+        example="role,permission",
+    )
+
+
+class RolePermissionCreateMultiSchema(BaseModel):
+    role_uuid: str
+    permissions: List[str]

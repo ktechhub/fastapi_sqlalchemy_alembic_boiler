@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .role_permissions import RolePermission
     from .user_roles import UserRole
+    from .users import User
 else:
     RolePermission = "RolePermission"
     UserRole = "UserRole"
+    User = "User"
 
 
 class Role(Base, BaseUUIDModelMixin):
@@ -33,7 +35,15 @@ class Role(Base, BaseUUIDModelMixin):
         overlaps="role_permissions",
     )
     user_roles: Mapped[list["UserRole"]] = relationship(
-        "UserRole", back_populates="role", overlaps="roles"
+        "UserRole", back_populates="role", overlaps="users"
+    )
+    users: Mapped[list["User"]] = relationship(
+        "User",
+        secondary="user_roles",
+        primaryjoin="Role.uuid == UserRole.role_uuid",
+        secondaryjoin="UserRole.user_uuid == User.uuid",
+        overlaps="user_roles",
+        viewonly=True,
     )
 
     def __str__(self) -> str:

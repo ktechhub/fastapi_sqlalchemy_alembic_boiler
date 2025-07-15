@@ -1,31 +1,52 @@
+import json, redis
 from typing import Callable
 from datetime import datetime
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from jose import jwt
+import jwt
 from pydantic import ValidationError
 
 from ..core.config import settings
 from ..schemas.tokens import TokenPayloadSchema
-from ..database.database import get_async_session
+from ..schemas.user_deps import UserDepSchema, PermissionSchema
+from ..database.get_session import get_async_session
 from ..cruds.users import user_crud
-from ..cruds.user_roles import user_roles_crud
-from ..cruds.role_permissions import role_permission_crud
-from ..cruds.permissions import permission_crud
 from ..models.users import User
-from ..models.user_roles import UserRole
+from ..models.roles import Role
+from ..models.permissions import Permission
 from ..models.role_permissions import RolePermission
-from ..utils.responses import not_authorized_response, forbidden_response
+from ..models.user_roles import UserRole
+from ..utils.responses import (
+    not_authorized_response,
+    forbidden_response,
+    internal_server_error_response,
+)
+from ..services.redis_base import client as redis_client
+from ..core.loggers import app_logger as logger
 
 reuseable_oauth = OAuth2PasswordBearer(
-    tokenUrl=(
-        "/api/v1/login"
-        if settings.SERVICE_NAME == "auth"
-        else "https://dev.ktechhub.com/api/v1/login/"
-    ),
+    tokenUrl="/api/v1/login/",
     scheme_name="JWT",
 )
+
+
+async def get_user_permissions(user: User, db: AsyncSession):
+    """Fetch permissions for all roles associated with the user."""
+    stmt = (
+        select(Permission)
+        .join(RolePermission, RolePermission.permission_uuid == Permission.uuid)
+        .join(Role, Role.uuid == RolePermission.role_uuid)
+        .join(UserRole, UserRole.role_uuid == Role.uuid)
+        .join(User, User.uuid == UserRole.user_uuid)
+        .where(User.uuid == user.uuid)
+        .distinct(Permission.uuid)
+    )
+    result = await db.execute(stmt)
+    permissions = result.scalars().all()
+    return permissions
 
 
 async def get_current_user(
@@ -41,68 +62,77 @@ async def get_current_user(
         # Check if token is expired
         if datetime.fromtimestamp(token_data.exp) < datetime.now():
             return forbidden_response("Token expired")
-    except (jwt.JWTError, ValidationError):
+
+        cached_user = redis_client.get(f"token:{token}")
+        if cached_user:
+            user_info = json.loads(cached_user)
+            return UserDepSchema(**user_info)
+
+        user = await user_crud.get(
+            db=session, uuid=token_data.sub, eager_load=[User.roles]
+        )
+        if user is None:
+            return not_authorized_response("Could not validate credentials")
+
+        permissions = await get_user_permissions(user, session)
+        user_data = UserDepSchema(
+            **user.to_orm_dict(),
+            permissions=[
+                PermissionSchema(**permission.to_dict()) for permission in permissions
+            ],
+        )
+        expires_in = payload["exp"] - int(datetime.now().timestamp())  # Remaining time
+        # Use 60 minutes (60*60 seconds) as default expiry, unless expires_in is less
+        expiry_time = min(3600, expires_in) if expires_in > 0 else 3600
+        redis_client.setex(f"token:{token}", expiry_time, user_data.model_dump_json())
+        return user_data
+    except ValidationError:
         return not_authorized_response("Could not validate credentials")
-
-    # Retrieve user from database
-    user = await user_crud.get(db=session, uuid=token_data.sub, eager_load=[User.roles])
-    if user is None:
-        return not_authorized_response("Could not validate credentials")
-
-    # if not user.email.endswith("@ktechhub.com"):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_401_UNAUTHORIZED,
-    #         detail="Hey my friend, you are not allowed here... :) Contact support team support@ktechhub.com",
-    #         headers={"WWW-Authenticate": "Bearer"},
-    #     )
-
-    return user
+    except jwt.ExpiredSignatureError:
+        logger.error("Token expired")
+        return not_authorized_response("Token expired")
+    except jwt.PyJWTError:
+        logger.error("Invalid token")
+        return not_authorized_response("Invalid token")
+    except redis.exceptions.ConnectionError:
+        logger.error("Redis connection error")
+        return internal_server_error_response("Internal server error")
+    except Exception as e:
+        logger.error(f"Error authenticating user: {e}")
+        return internal_server_error_response("Internal server error")
 
 
 def get_user_with_role(required_role: str) -> Callable:
-    async def role_dependency(
-        user=Depends(get_current_user),
-        session: Session = Depends(get_async_session),
-    ):
-        role_names = required_role.split(",")
+    """
+    Dependency to check if a user has at least one of the required roles.
 
-        # data = user.to_schema_dict()
-        # Check if the user has the required role
-        for role in user.roles:
-            if role.name in role_names:
-                return user
+    :param required_role: Comma-separated list of required roles.
+    :return: FastAPI dependency function.
+    """
 
-        return not_authorized_response(
-            f"{required_role.capitalize()} privileges required"
-        )
+    async def role_dependency(user: UserDepSchema = Depends(get_current_user)):
+        if not user.has_role(required_role):
+            return forbidden_response(
+                f"You do not have the required role(s): {required_role}"
+            )
+        return user
 
     return role_dependency
 
 
 def get_user_with_permission(required_permission: str) -> Callable:
-    async def permission_dependency(
-        user=Depends(get_current_user),
-        session: Session = Depends(get_async_session),
-    ):
-        permission_names = required_permission.split(",")
-        # Retrieve the user's roles
-        user_roles = await user_roles_crud.get_multi(
-            db=session, limit=-1, user_uuid=user.uuid, eager_load=[UserRole.role]
-        )
+    """
+    Dependency to check if a user has at least one of the required permissions.
 
-        role_permissions = await role_permission_crud.get_multi(
-            db=session,
-            limit=-1,
-            role_uuid=[role.uuid for role in user_roles["data"]],
-            eager_load=[RolePermission.permission],
-        )
-        # Check if the user has the required role
-        for user_permission in role_permissions["data"]:
-            if user_permission.permission.name in permission_names:
-                return user
+    :param required_permission: Comma-separated list of required permissions.
+    :return: FastAPI dependency function.
+    """
 
-        return not_authorized_response(
-            f"{required_permission.capitalize()} permissions required"
-        )
+    async def permission_dependency(user: UserDepSchema = Depends(get_current_user)):
+        if not user.has_permission(required_permission):
+            return forbidden_response(
+                f"You do not have the required permission(s): {required_permission}"
+            )
+        return user
 
     return permission_dependency

@@ -1,11 +1,43 @@
+from datetime import datetime, timedelta, timezone
+from typing import Literal, Optional, Annotated
 from pydantic import BaseModel, constr
-from typing import Optional
-from .base_schema import BaseResponseSchema
+from .base_schema import BaseUUIDSchema, BaseResponseSchema
+
+TypeStr = Annotated[str, constr(min_length=1, max_length=50)]
+CodeStr = Annotated[str, constr(min_length=1, max_length=8)]
 
 
 class VerificationCodeBase(BaseModel):
     type: constr(min_length=1, max_length=50) = "confirm_email"  # type: ignore
     user_uuid: str
+
+
+class VerificationCodeBaseSchema(BaseModel):
+    type: TypeStr = "confirm_email"
+    user_uuid: str
+    expires_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class VerificationCodeCreateSchema(VerificationCodeBaseSchema):
+    pass
+
+
+class VerificationCodeUpdateSchema(VerificationCodeBaseSchema):
+    pass
+
+
+class VerificationCodeSchema(VerificationCodeBaseSchema, BaseUUIDSchema):
+    pass
+
+
+class ConfirmVerificationCode(BaseModel):
+    type: Literal["confirm_email", "reset_password", "change_password"] = (
+        "confirm_email"
+    )
+    code: constr(min_length=1, max_length=8)  # type: ignore
 
 
 class VerificationCodeCreate(VerificationCodeBase):
