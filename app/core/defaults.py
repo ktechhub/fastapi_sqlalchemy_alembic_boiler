@@ -6,6 +6,12 @@ default_roles = [
         "has_dashboard_access": True,
     },
     {
+        "name": "developer",
+        "label": "Developer",
+        "description": "Developer role",
+        "has_dashboard_access": True,
+    },
+    {
         "name": "auditor",
         "label": "Auditor",
         "description": "Auditor role",

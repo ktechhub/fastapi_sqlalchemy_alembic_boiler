@@ -1,6 +1,7 @@
 import os
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
+from .openapi_configs import OPENAPI_TAGS, OPENAPI_SERVERS, LICENSE_INFO
 
 
 class Settings(BaseSettings):
@@ -10,6 +11,9 @@ class Settings(BaseSettings):
         "url": "https://www.ktechhub.com/",
         "email": "info@ktechhub.com",
     }
+    LICENSE_INFO: dict = LICENSE_INFO
+    OPENAPI_TAGS: list = OPENAPI_TAGS
+    OPENAPI_SERVERS: list = OPENAPI_SERVERS
 
     ENV: str = "local"
 

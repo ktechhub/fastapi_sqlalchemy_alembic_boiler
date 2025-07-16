@@ -2,7 +2,7 @@ import os
 from typing import List, Optional, Union
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from app.core.config import settings
-from app.core.loggers import logger
+from app.core.loggers import redis_logger as logger
 from .email_templates import get_basic_template, get_welcome_email_template
 
 

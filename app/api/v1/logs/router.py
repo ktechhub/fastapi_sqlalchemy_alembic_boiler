@@ -4,10 +4,10 @@ from . import activity_logs
 
 logs_router = APIRouter()
 logs_router.include_router(
-    system_logs.SystemLogRouter().router, prefix="/system-logs", tags=["system-logs"]
+    system_logs.SystemLogRouter().router, prefix="/system-logs", tags=["System Logs"]
 )
 logs_router.include_router(
     activity_logs.ActivityLogRouter().router,
     prefix="/activity-logs",
-    tags=["activity-logs"],
+    tags=["Activity Logs"],
 )
