@@ -324,7 +324,9 @@ class AsyncCacheService:
         Returns:
             True if successful, False otherwise
         """
-        pattern = f"{model_name}:*"
+        # Include namespace in the pattern since aiocache prefixes keys with namespace
+        namespace = settings.APP_NAME.lower()
+        pattern = f"{namespace}:{model_name}:*"
         return await self.delete_pattern(pattern)
 
     async def invalidate_model_cache_with_dependencies(self, model_name: str) -> bool:
@@ -350,8 +352,10 @@ class AsyncCacheService:
             # Collect all keys to delete in a single batch operation
             all_keys_to_delete = []
 
+            # Include namespace in the pattern since aiocache prefixes keys with namespace
+            namespace = settings.APP_NAME.lower()
             for model in models_to_invalidate:
-                pattern = f"{model}:*"
+                pattern = f"{namespace}:{model}:*"
                 cursor = 0
 
                 while True:
