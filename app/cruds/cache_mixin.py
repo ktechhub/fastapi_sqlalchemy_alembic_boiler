@@ -100,15 +100,18 @@ class CacheMixin:
         Returns:
             Dictionary containing data and total_count
         """
-        # Generate cache filters
+        # Generate cache filters using optimized method
         cache_filters = self._get_cache_filters(
             skip=skip, limit=limit, sort=sort, **filters
         )
 
-        # Try to get from cache first
-        cached_result = await self.cache_service.get_cached_list(
+        # Generate cache key directly using the optimized method
+        cache_key = self.cache_service.get_list_cache_key(
             self.model_name, **cache_filters
         )
+
+        # Try to get from cache first
+        cached_result = await self.cache_service.get(cache_key)
         if cached_result:
             # logger.info(f"Using cached data for {self.model_name} list")
             return cached_result
@@ -118,16 +121,14 @@ class CacheMixin:
             db=db, skip=skip, limit=limit, sort=sort, **filters
         )
 
-        # Cache the result
-        await self.cache_service.cache_list_result(
-            self.model_name, result, **cache_filters
-        )
+        # Cache the result using the optimized set method
+        await self.cache_service.set(cache_key, result, self.ttl)
 
         return result
 
     async def invalidate_cache(self) -> bool:
         """
-        Invalidate all cache entries for this model
+        Invalidate all cache entries for this model using optimized pattern deletion
 
         Returns:
             True if successful, False otherwise
@@ -136,7 +137,7 @@ class CacheMixin:
 
     async def invalidate_cache_with_dependencies(self) -> bool:
         """
-        Invalidate cache for this model and all its dependent models
+        Invalidate cache for this model and all its dependent models using optimized batch operations
 
         Returns:
             True if successful, False otherwise
@@ -147,7 +148,7 @@ class CacheMixin:
 
     async def invalidate_list_cache(self, **filters) -> bool:
         """
-        Invalidate specific list cache entries
+        Invalidate specific list cache entries using optimized cache key generation
 
         Args:
             **filters: Filter parameters to match cache keys
@@ -156,8 +157,10 @@ class CacheMixin:
             True if successful, False otherwise
         """
         cache_filters = self._get_cache_filters(**filters)
-        key = self.cache_service.get_list_cache_key(self.model_name, **cache_filters)
-        return await self.cache_service.delete(key)
+        cache_key = self.cache_service.get_list_cache_key(
+            self.model_name, **cache_filters
+        )
+        return await self.cache_service.delete(cache_key)
 
     def _get_item_cache_filters(
         self,
@@ -229,10 +232,13 @@ class CacheMixin:
             eager_load=eager_load, fields=fields, **filters
         )
 
-        # Try to get from cache first
-        cached_result = await self.cache_service.get_cached_item(
+        # Generate cache key directly using the optimized method
+        cache_key = self.cache_service.get_item_cache_key(
             self.model_name, identifier, **cache_filters
         )
+
+        # Try to get from cache first
+        cached_result = await self.cache_service.get(cache_key)
         if cached_result:
             # logger.info(f"Using cached data for {self.model_name} item {identifier}")
             return cached_result
@@ -245,17 +251,15 @@ class CacheMixin:
             **{self._get_identifier_field_name(): identifier, **filters},
         )
 
-        # Cache the result if found
+        # Cache the result if found using the optimized set method
         if result:
-            await self.cache_service.cache_item_result(
-                self.model_name, identifier, result, **cache_filters
-            )
+            await self.cache_service.set(cache_key, result, self.ttl)
 
         return result
 
     async def invalidate_item_cache(self, identifier: str, **filters) -> bool:
         """
-        Invalidate a specific item cache entry
+        Invalidate a specific item cache entry using optimized cache key generation
 
         Args:
             identifier: Item identifier (uuid, id, etc.)
@@ -265,7 +269,7 @@ class CacheMixin:
             True if successful, False otherwise
         """
         cache_filters = self._get_item_cache_filters(**filters)
-        key = self.cache_service.get_item_cache_key(
+        cache_key = self.cache_service.get_item_cache_key(
             self.model_name, identifier, **cache_filters
         )
-        return await self.cache_service.delete(key)
+        return await self.cache_service.delete(cache_key)

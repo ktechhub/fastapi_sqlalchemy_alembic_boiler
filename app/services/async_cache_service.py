@@ -25,9 +25,30 @@ class SQLAlchemyJSONEncoder(json.JSONEncoder):
         # Handle datetime objects
         elif isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle SQLAlchemy objects that don't have to_dict method
+        elif hasattr(obj, "__table__"):
+            # For SQLAlchemy model instances without to_dict method
+            try:
+                # Try to convert to dict using SQLAlchemy's __dict__
+                result = {}
+                for key, value in obj.__dict__.items():
+                    if not key.startswith("_"):
+                        if isinstance(value, datetime):
+                            result[key] = value.isoformat()
+                        else:
+                            result[key] = value
+                return result
+            except Exception:
+                # If conversion fails, return a simple representation
+                return f"{obj.__class__.__name__}(id={getattr(obj, 'id', 'unknown')})"
         # Handle other non-serializable objects
         else:
-            return super().default(obj)
+            try:
+                # Try to convert to string
+                return str(obj)
+            except Exception:
+                # If all else fails, return a simple representation
+                return f"{obj.__class__.__name__}(unserializable)"
 
 
 class AsyncCacheService:
@@ -57,8 +78,7 @@ class AsyncCacheService:
                 "port": settings.REDIS_PORT,
                 "timeout": 5,
                 "serializer": {"class": "aiocache.serializers.JsonSerializer"},
-                "namespace": settings.APP_NAME,
-                "key_builder": self._key_builder,
+                "namespace": settings.APP_NAME.lower(),
             }
 
             # Only add password if it's provided
@@ -70,11 +90,6 @@ class AsyncCacheService:
         except Exception as e:
             logger.warning(f"Failed to configure aiocache: {e}")
             self.cache = None
-
-    def _key_builder(self, func, *args, **kwargs):
-        """Custom key builder for aiocache"""
-        # This will be overridden by our custom key generation
-        return f"{func.__name__}:{hash(str(args) + str(sorted(kwargs.items())))}"
 
     def detect_model_dependencies(self, model_class: Type) -> Set[str]:
         """
@@ -164,7 +179,14 @@ class AsyncCacheService:
         try:
             cached_data = await self.cache.get(key)
             if cached_data:
-                return cached_data
+                try:
+                    # Try to deserialize the data
+                    return json.loads(cached_data)
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        f"Failed to deserialize cached data for key {key}: {e}"
+                    )
+                    return None
             return None
         except Exception as e:
             logger.warning(f"Cache get error for key {key}: {e}")
@@ -187,7 +209,39 @@ class AsyncCacheService:
 
         try:
             ttl = ttl or self.ttl
-            await self.cache.set(key, value, ttl=ttl)
+
+            # Try to serialize the value first to catch any serialization errors
+            try:
+                # Use custom encoder for SQLAlchemy objects
+                serialized_value = json.dumps(value, cls=SQLAlchemyJSONEncoder)
+            except Exception as serialization_error:
+                logger.warning(
+                    f"Failed to serialize value for cache key {key}: {serialization_error}"
+                )
+                # Try to serialize a simplified version
+                try:
+                    if isinstance(value, dict) and "data" in value:
+                        # For list results, try to serialize just the data
+                        simplified_value = {
+                            "data": [
+                                str(item) if hasattr(item, "__table__") else item
+                                for item in value.get("data", [])
+                            ],
+                            "total_count": value.get("total_count", 0),
+                        }
+                        serialized_value = json.dumps(
+                            simplified_value, cls=SQLAlchemyJSONEncoder
+                        )
+                    else:
+                        # For other types, try to convert to string
+                        serialized_value = json.dumps(str(value))
+                except Exception as fallback_error:
+                    logger.error(
+                        f"Failed to serialize even simplified value for cache key {key}: {fallback_error}"
+                    )
+                    return False
+
+            await self.cache.set(key, serialized_value, ttl=ttl)
             return True
         except Exception as e:
             logger.warning(f"Cache set error for key {key}: {e}")
@@ -217,7 +271,7 @@ class AsyncCacheService:
 
     async def delete_pattern(self, pattern: str) -> bool:
         """
-        Delete all keys matching a pattern
+        Delete all keys matching a pattern using SCAN for better performance
 
         Args:
             pattern: Redis pattern (e.g., 'roles:*')
@@ -229,13 +283,32 @@ class AsyncCacheService:
             return False
 
         try:
-            # aiocache doesn't have direct pattern deletion, so we'll use the underlying client
+            # Use SCAN instead of KEYS for better performance (non-blocking)
             if hasattr(self.cache, "_redis"):
-                keys = await self.cache._redis.keys(pattern)
-                if keys:
-                    result = await self.cache._redis.delete(*keys)
-                    print(f"Deleted {result} cache keys matching pattern: {pattern}")
+                cursor = 0
+                total_deleted = 0
+
+                while True:
+                    # SCAN with count limit for better performance
+                    cursor, keys = await self.cache._redis.scan(
+                        cursor, match=pattern, count=100  # Process 100 keys at a time
+                    )
+
+                    if keys:
+                        # Delete keys in batch
+                        deleted = await self.cache._redis.delete(*keys)
+                        total_deleted += deleted
+
+                    # Stop when cursor returns to 0
+                    if cursor == 0:
+                        break
+
+                if total_deleted > 0:
+                    print(
+                        f"Deleted {total_deleted} cache keys matching pattern: {pattern}"
+                    )
                     return True
+
             return False
         except Exception as e:
             logger.warning(f"Cache delete pattern error for {pattern}: {e}")
@@ -256,7 +329,7 @@ class AsyncCacheService:
 
     async def invalidate_model_cache_with_dependencies(self, model_name: str) -> bool:
         """
-        Invalidate cache for a model and all its dependent models
+        Invalidate cache for a model and all its dependent models using optimized batch operations
 
         Args:
             model_name: Name of the model (e.g., 'roles', 'users')
@@ -271,16 +344,45 @@ class AsyncCacheService:
             # Get all models that need cache invalidation
             models_to_invalidate = self._get_models_to_invalidate(model_name)
 
-            # Invalidate cache for all affected models
+            if not hasattr(self.cache, "_redis"):
+                return False
+
+            # Collect all keys to delete in a single batch operation
+            all_keys_to_delete = []
+
             for model in models_to_invalidate:
                 pattern = f"{model}:*"
-                if hasattr(self.cache, "_redis"):
-                    keys = await self.cache._redis.keys(pattern)
-                    if keys:
-                        result = await self.cache._redis.delete(*keys)
-                        print(f"Invalidated {result} cache keys for model: {model}")
+                cursor = 0
 
-            return True
+                while True:
+                    # Use SCAN for each model pattern
+                    cursor, keys = await self.cache._redis.scan(
+                        cursor, match=pattern, count=100
+                    )
+
+                    if keys:
+                        all_keys_to_delete.extend(keys)
+
+                    if cursor == 0:
+                        break
+
+            # Delete all keys in a single batch operation
+            if all_keys_to_delete:
+                # Split into chunks to avoid Redis command size limits
+                chunk_size = 1000
+                total_deleted = 0
+
+                for i in range(0, len(all_keys_to_delete), chunk_size):
+                    chunk = all_keys_to_delete[i : i + chunk_size]
+                    deleted = await self.cache._redis.delete(*chunk)
+                    total_deleted += deleted
+
+                print(
+                    f"Invalidated {total_deleted} cache keys for {len(models_to_invalidate)} models"
+                )
+                return True
+
+            return False
         except Exception as e:
             logger.warning(f"Cache invalidation error for {model_name}: {e}")
             return False
@@ -308,52 +410,6 @@ class AsyncCacheService:
 
         print(f"Models to invalidate for {model_name}: {models_to_invalidate}")
         return models_to_invalidate
-
-    def get_list_cache_key(self, model_name: str, **filters) -> str:
-        """
-        Generate cache key for list operations
-
-        Args:
-            model_name: Name of the model
-            **filters: Filter parameters (skip, limit, sort, etc.)
-
-        Returns:
-            Cache key string
-        """
-        return self._generate_cache_key(f"{model_name}:list", **filters)
-
-    async def cache_list_result(
-        self, model_name: str, result: Dict[str, Any], **filters
-    ) -> bool:
-        """
-        Cache list operation result
-
-        Args:
-            model_name: Name of the model
-            result: Result data to cache
-            **filters: Filter parameters used for the query
-
-        Returns:
-            True if successful, False otherwise
-        """
-        key = self.get_list_cache_key(model_name, **filters)
-        return await self.set(key, result, self.ttl)
-
-    async def get_cached_list(
-        self, model_name: str, **filters
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get cached list result
-
-        Args:
-            model_name: Name of the model
-            **filters: Filter parameters used for the query
-
-        Returns:
-            Cached result or None if not found
-        """
-        key = self.get_list_cache_key(model_name, **filters)
-        return await self.get(key)
 
     def get_item_cache_key(self, model_name: str, identifier: str, **filters) -> str:
         """
@@ -403,6 +459,116 @@ class AsyncCacheService:
         """
         key = self.get_item_cache_key(model_name, identifier, **filters)
         return await self.get(key)
+
+    def get_list_cache_key(self, model_name: str, **filters) -> str:
+        """
+        Generate cache key for list operations
+
+        Args:
+            model_name: Name of the model
+            **filters: Filter parameters (skip, limit, sort, etc.)
+
+        Returns:
+            Cache key string
+        """
+        return self._generate_cache_key(f"{model_name}:list", **filters)
+
+    async def get_multi(self, keys: List[str]) -> Dict[str, Any]:
+        """
+        Get multiple values from cache in a single operation
+
+        Args:
+            keys: List of cache keys to retrieve
+
+        Returns:
+            Dictionary mapping keys to their values (None if not found)
+        """
+        if not self.enabled or not self.cache:
+            return {key: None for key in keys}
+
+        try:
+            if hasattr(self.cache, "_redis"):
+                # Use pipeline for better performance
+                pipe = self.cache._redis.pipeline()
+                for key in keys:
+                    pipe.get(key)
+                results = await pipe.execute()
+
+                return {key: result for key, result in zip(keys, results)}
+            else:
+                # Fallback to individual gets
+                results = {}
+                for key in keys:
+                    results[key] = await self.get(key)
+                return results
+        except Exception as e:
+            logger.warning(f"Cache get_multi error: {e}")
+            return {key: None for key in keys}
+
+    async def set_multi(self, data: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+        """
+        Set multiple values in cache in a single operation
+
+        Args:
+            data: Dictionary mapping keys to values
+            ttl: Time to live in seconds (uses default if None)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.enabled or not self.cache:
+            return False
+
+        try:
+            ttl = ttl or self.ttl
+
+            if hasattr(self.cache, "_redis"):
+                # Use pipeline for better performance
+                pipe = self.cache._redis.pipeline()
+                for key, value in data.items():
+                    pipe.setex(key, ttl, value)
+                await pipe.execute()
+                return True
+            else:
+                # Fallback to individual sets
+                for key, value in data.items():
+                    await self.set(key, value, ttl)
+                return True
+        except Exception as e:
+            logger.warning(f"Cache set_multi error: {e}")
+            return False
+
+    async def delete_multi(self, keys: List[str]) -> int:
+        """
+        Delete multiple keys from cache in a single operation
+
+        Args:
+            keys: List of cache keys to delete
+
+        Returns:
+            Number of keys deleted
+        """
+        if not self.enabled or not self.cache:
+            return 0
+
+        try:
+            if hasattr(self.cache, "_redis"):
+                # Use pipeline for better performance
+                pipe = self.cache._redis.pipeline()
+                for key in keys:
+                    pipe.delete(key)
+                results = await pipe.execute()
+                return sum(results)
+            else:
+                # Fallback to individual deletes
+                deleted_count = 0
+                for key in keys:
+                    if await self.delete(key):
+                        deleted_count += 1
+                return deleted_count
+        except Exception as e:
+            logger.warning(f"Cache delete_multi error: {e}")
+            return 0
 
 
 # Global async cache service instance

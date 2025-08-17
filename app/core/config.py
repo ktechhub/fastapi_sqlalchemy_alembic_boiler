@@ -105,4 +105,4 @@ if not settings.DATABASE_URL:
         raise ValueError(f"Unsupported database engine: {settings.DB_ENGINE}")
 
 if not settings.REDIS_URL:
-    settings.REDIS_URL = f"redis://{settings.REDIS_USERNAME}:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}"
+    settings.REDIS_URL = f"redis://{settings.REDIS_USERNAME}:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/0"
