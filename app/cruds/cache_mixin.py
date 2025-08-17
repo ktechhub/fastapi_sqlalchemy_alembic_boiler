@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List, Type, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from ..services.cache_service import cache_service
+from ..services.async_cache_service import async_cache_service
 from ..core.loggers import app_logger as logger
 from ..core.config import settings
 
@@ -19,6 +19,7 @@ class CacheMixin:
         """
         self.model_name = model_name or self.model.__name__.lower()
         self.ttl = ttl
+        self.cache_service = async_cache_service
 
         # Auto-detect and register dependencies if not already registered
         self._register_dependencies()
@@ -27,13 +28,13 @@ class CacheMixin:
         """Register model dependencies for cache invalidation"""
         if (
             not hasattr(self, "model")
-            or self.model_name not in cache_service.model_dependencies
+            or self.model_name not in self.cache_service.model_dependencies
         ):
             try:
                 # Auto-detect dependencies from SQLAlchemy relationships
-                detected_deps = cache_service.detect_model_dependencies(self.model)
+                detected_deps = self.cache_service.detect_model_dependencies(self.model)
                 if detected_deps:
-                    cache_service.register_model_dependencies(
+                    self.cache_service.register_model_dependencies(
                         self.model_name, list(detected_deps)
                     )
                     # print(
@@ -105,7 +106,9 @@ class CacheMixin:
         )
 
         # Try to get from cache first
-        cached_result = cache_service.get_cached_list(self.model_name, **cache_filters)
+        cached_result = await self.cache_service.get_cached_list(
+            self.model_name, **cache_filters
+        )
         if cached_result:
             # logger.info(f"Using cached data for {self.model_name} list")
             return cached_result
@@ -116,29 +119,33 @@ class CacheMixin:
         )
 
         # Cache the result
-        cache_service.cache_list_result(self.model_name, result, **cache_filters)
+        await self.cache_service.cache_list_result(
+            self.model_name, result, **cache_filters
+        )
 
         return result
 
-    def invalidate_cache(self) -> bool:
+    async def invalidate_cache(self) -> bool:
         """
         Invalidate all cache entries for this model
 
         Returns:
             True if successful, False otherwise
         """
-        return cache_service.invalidate_model_cache(self.model_name)
+        return await self.cache_service.invalidate_model_cache(self.model_name)
 
-    def invalidate_cache_with_dependencies(self) -> bool:
+    async def invalidate_cache_with_dependencies(self) -> bool:
         """
         Invalidate cache for this model and all its dependent models
 
         Returns:
             True if successful, False otherwise
         """
-        return cache_service.invalidate_model_cache_with_dependencies(self.model_name)
+        return await self.cache_service.invalidate_model_cache_with_dependencies(
+            self.model_name
+        )
 
-    def invalidate_list_cache(self, **filters) -> bool:
+    async def invalidate_list_cache(self, **filters) -> bool:
         """
         Invalidate specific list cache entries
 
@@ -149,8 +156,8 @@ class CacheMixin:
             True if successful, False otherwise
         """
         cache_filters = self._get_cache_filters(**filters)
-        key = cache_service.get_list_cache_key(self.model_name, **cache_filters)
-        return cache_service.delete(key)
+        key = self.cache_service.get_list_cache_key(self.model_name, **cache_filters)
+        return await self.cache_service.delete(key)
 
     def _get_item_cache_filters(
         self,
@@ -223,7 +230,7 @@ class CacheMixin:
         )
 
         # Try to get from cache first
-        cached_result = cache_service.get_cached_item(
+        cached_result = await self.cache_service.get_cached_item(
             self.model_name, identifier, **cache_filters
         )
         if cached_result:
@@ -240,8 +247,25 @@ class CacheMixin:
 
         # Cache the result if found
         if result:
-            cache_service.cache_item_result(
+            await self.cache_service.cache_item_result(
                 self.model_name, identifier, result, **cache_filters
             )
 
         return result
+
+    async def invalidate_item_cache(self, identifier: str, **filters) -> bool:
+        """
+        Invalidate a specific item cache entry
+
+        Args:
+            identifier: Item identifier (uuid, id, etc.)
+            **filters: Additional filter parameters
+
+        Returns:
+            True if successful, False otherwise
+        """
+        cache_filters = self._get_item_cache_filters(**filters)
+        key = self.cache_service.get_item_cache_key(
+            self.model_name, identifier, **cache_filters
+        )
+        return await self.cache_service.delete(key)

@@ -86,7 +86,7 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
                 description=f"{self.model_name} with identifier {self._get_identifier(db_obj)} created successfully",
             )
 
-        self.invalidate_cache()
+        await self.invalidate_cache()
 
         return db_obj
 
@@ -118,7 +118,7 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
                 objs_in=activity_logs,
             )
 
-        self.invalidate_cache()
+        await self.invalidate_cache()
         return db_objs
 
     async def update(
@@ -160,7 +160,7 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
                 description=f"{self.model_name} with identifier {self._get_identifier(db_obj)} updated successfully",
             )
 
-        self.invalidate_cache()
+        await self.invalidate_cache()
 
         return db_obj
 
@@ -188,6 +188,6 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
                 description=f"{self.model_name} with identifier {identifier} deleted successfully",
             )
 
-        self.invalidate_cache()
+        await self.invalidate_cache()
 
         return db_obj

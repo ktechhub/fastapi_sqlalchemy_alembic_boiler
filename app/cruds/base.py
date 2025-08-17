@@ -41,6 +41,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         self.model = model
         # Initialize cache mixin
         super().__init__(model_name=model.__name__.lower(), ttl=ttl)
+        # Ensure model_name is set in cache mixin
+        if hasattr(self, "_register_dependencies"):
+            self._register_dependencies()
 
     def _get_identifier_field(self) -> Optional[InstrumentedAttribute]:
         if hasattr(self.model, "uuid"):
@@ -403,6 +406,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         query_filters: Optional[List[Any]] = None,
         group_by: Optional[List[Any]] = None,
         include_relations: Optional[str] = None,
+        increment_views: bool = True,
         **filters: Any,
     ) -> Any:
         """
@@ -419,6 +423,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         - `query_filters`: List of SQLAlchemy-style filters to apply (default is None).
         - `group_by`: List of fields to group the query by (default is None).
         - `include_relations`: Comma-separated string of relation names to eager load (e.g., 'permissions,users')
+        - `increment_views`: Whether to increment the views field when retrieving a single item (default is True).
         - `**filters`: Keyword arguments for dynamic filtering.
 
         **Returns**
@@ -532,7 +537,22 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
 
         # Execute the query
         result = await db.execute(query)
-        return result.scalars().first()
+        obj = result.scalars().first()
+
+        # Increment views if the object exists, has a views field, and increment_views is True
+        if obj and increment_views and hasattr(obj, "views"):
+            try:
+                # Increment the views field
+                obj.views = (obj.views or 0) + 1
+                db.add(obj)
+                await db.commit()
+                # Refresh the object to ensure it's in a valid state for caching
+                await db.refresh(obj)
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"Error incrementing views for {self.model.__name__}: {e}")
+
+        return obj
 
     async def get_multi(
         self,
@@ -803,7 +823,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             await db.commit()
             await db.refresh(db_obj)
             # Invalidate cache after successful creation
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return db_obj
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
@@ -858,7 +878,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 await db.refresh(db_obj)
 
             # Invalidate cache after successful creation
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return db_objs
         except Exception as e:
             await db.rollback()  # Rollback the transaction on failure
@@ -922,7 +942,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             await db.commit()
 
             # Invalidate cache after successful bulk creation
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return True
 
         except Exception as e:
@@ -1001,7 +1021,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 await db.commit()
                 await db.refresh(db_obj)
                 # Invalidate cache after successful update
-                self.invalidate_cache_with_dependencies()
+                await self.invalidate_cache_with_dependencies()
                 return db_obj
             except Exception as e:
                 await db.rollback()  # Rollback on failure to avoid partial commits
@@ -1058,7 +1078,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             result = await db.execute(statement)
             await db.commit()
             # Invalidate cache after successful update
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return result.rowcount
 
         # Default bulk update logic (update records using filters and data)
@@ -1093,7 +1113,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
 
             await db.commit()
             # Invalidate cache after successful bulk update
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return updated_count
 
         return 0
@@ -1172,7 +1192,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             await db.delete(obj)
             await db.commit()
             # Invalidate cache after successful deletion
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
 
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
@@ -1254,7 +1274,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
 
             await db.commit()
             # Invalidate cache after successful bulk deletion
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
         except Exception as e:
             await db.rollback()  # Rollback on failure to avoid partial commits
             logger.error(f"Error deleting: {e}")
@@ -1287,7 +1307,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 result = await db.execute(statement)
                 await db.commit()
                 # Invalidate cache after successful soft delete
-                self.invalidate_cache_with_dependencies()
+                await self.invalidate_cache_with_dependencies()
                 return None  # No specific object is returned for statement updates
             except Exception as e:
                 await db.rollback()
@@ -1305,7 +1325,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 await db.commit()
                 await db.refresh(db_obj)
                 # Invalidate cache after successful soft delete
-                self.invalidate_cache_with_dependencies()
+                await self.invalidate_cache_with_dependencies()
                 return db_obj
             except Exception as e:
                 await db.rollback()
@@ -1346,7 +1366,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             await db.commit()
             await db.refresh(db_obj)
             # Invalidate cache after successful restoration
-            self.invalidate_cache_with_dependencies()
+            await self.invalidate_cache_with_dependencies()
             return db_obj
         except Exception as e:
             await db.rollback()

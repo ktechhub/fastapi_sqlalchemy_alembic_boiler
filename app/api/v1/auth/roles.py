@@ -202,7 +202,7 @@ class RoleRouter:
     async def list(
         self,
         filters: RoleFilters = Depends(),
-        user: User = Depends(get_user_with_permission("can_read_roles")),
+        # user: User = Depends(get_user_with_permission("can_read_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Fetching {self.plural} with filters: {filters.__dict__}")

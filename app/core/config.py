@@ -5,6 +5,7 @@ from .openapi_configs import OPENAPI_TAGS, OPENAPI_SERVERS, LICENSE_INFO
 
 
 class Settings(BaseSettings):
+    APP_NAME: str = "Ktechhub"
     API_VERSION: str = "1.0.0"
     CONTACT: dict = {
         "name": "Ktechhub API",
