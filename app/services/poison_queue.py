@@ -23,7 +23,7 @@ async def process_poison_queue(queue_name, message, ttl=30 * 24 * 60 * 60):
         # Store with TTL - Redis will auto-delete
         await redis_client.setex(message_id, ttl, serialized_message)
 
-        logger.info(f"Moved message to poison queue {poison_queue_name}: {message}")
+        logger.info(f"Moved message to poison queue '{poison_queue_name}': {message}")
 
     else:
         message["retries"] = retries + 1
