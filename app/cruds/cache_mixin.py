@@ -1,13 +1,13 @@
 from typing import Dict, Any, Optional, List, Type, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from ..services.async_cache_service import async_cache_service
+from ..services.cache_service import async_cache_service
 from ..core.loggers import app_logger as logger
 from ..core.config import settings
 
 
 class CacheMixin:
-    """Mixin to add caching functionality to CRUD classes"""
+    """Simplified mixin to add caching functionality to CRUD classes"""
 
     def __init__(self, model_name: str = None, ttl: int = settings.CACHE_TTL_MEDIUM):
         """
@@ -17,33 +17,9 @@ class CacheMixin:
             model_name: Name of the model for cache keys (defaults to model.__name__.lower())
             ttl: Time to live for cache entries
         """
-        self.model_name = model_name or self.model.__name__.lower()
+        self.model_name = model_name
         self.ttl = ttl
         self.cache_service = async_cache_service
-
-        # Auto-detect and register dependencies if not already registered
-        self._register_dependencies()
-
-    def _register_dependencies(self):
-        """Register model dependencies for cache invalidation"""
-        if (
-            not hasattr(self, "model")
-            or self.model_name not in self.cache_service.model_dependencies
-        ):
-            try:
-                # Auto-detect dependencies from SQLAlchemy relationships
-                detected_deps = self.cache_service.detect_model_dependencies(self.model)
-                if detected_deps:
-                    self.cache_service.register_model_dependencies(
-                        self.model_name, list(detected_deps)
-                    )
-                    # print(
-                    #     f"Auto-registered dependencies for {self.model_name}: {detected_deps}"
-                    # )
-            except Exception as e:
-                logger.warning(
-                    f"Could not auto-detect dependencies for {self.model_name}: {e}"
-                )
 
     def _get_cache_filters(
         self, skip: int = 0, limit: int = 100, sort: str = "", **filters
@@ -128,23 +104,12 @@ class CacheMixin:
 
     async def invalidate_cache(self) -> bool:
         """
-        Invalidate all cache entries for this model using optimized pattern deletion
+        Invalidate all cache entries for this model
 
         Returns:
             True if successful, False otherwise
         """
         return await self.cache_service.invalidate_model_cache(self.model_name)
-
-    async def invalidate_cache_with_dependencies(self) -> bool:
-        """
-        Invalidate cache for this model and all its dependent models using optimized batch operations
-
-        Returns:
-            True if successful, False otherwise
-        """
-        return await self.cache_service.invalidate_model_cache_with_dependencies(
-            self.model_name
-        )
 
     async def invalidate_list_cache(self, **filters) -> bool:
         """

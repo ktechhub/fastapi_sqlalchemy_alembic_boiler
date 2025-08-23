@@ -97,14 +97,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
 
         # Log incoming request
-        logger.info(f"➡️ {request.method} {request.url.path}")
+        print(f"➡️ {request.method} {request.url.path}")
 
         response = await call_next(request)
 
         process_time = round((time.time() - start_time) * 1000, 2)
 
         # Log response status and duration
-        logger.info(
+        print(
             f"⬅️ {request.method} {request.url.path} - {response.status_code} ({process_time} ms)"
         )
 

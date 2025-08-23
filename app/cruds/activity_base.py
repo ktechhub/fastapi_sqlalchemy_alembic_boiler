@@ -1,7 +1,6 @@
-from typing import Dict, Optional, Type, TypeVar, Generic, Union, Any, List
+from typing import Dict, Optional, Type, TypeVar, Union, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from ..models.activity_logs import ActivityLog
 from ..schemas.activity_logs import ActivityLogCreateSchema
 from .activity_logs import activity_log_crud
 from .base import CRUDBase
@@ -22,7 +21,7 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
     def __init__(self, model: Type[ModelType], ttl: int = settings.CACHE_TTL_MEDIUM):
         super().__init__(model, ttl=ttl)
         self.singular = model.__name__.lower()
-        self.model_name = model.__name__
+        self.model_name = model.__name__.lower()
 
     def _get_identifier(self, db_obj: ModelType) -> str:
         """Get the identifier (uuid or id) from the database object."""
