@@ -1,6 +1,11 @@
 import asyncio
 from faker import Faker
 from datetime import datetime, timezone
+
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=".env")
+
 from app.tasks.common.fake_users import create_fake_users
 from app.utils.password_util import hash_password
 from app.cruds.users import user_crud

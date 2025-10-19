@@ -9,6 +9,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=".env")
+
 from pywebguard import FastAPIGuard
 from app.core.webguard import pyguard_config, async_redis_storage, route_rate_limits
 from app.core.config import settings

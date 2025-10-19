@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_NAME: str = "ktechhub"
-    DB_ENGINE: str = "postgresql"
+    DB_ENGINE: str = "mysql"
     DATABASE_URL: str = ""
 
     REDIS_PORT: int = 6379
@@ -95,7 +95,7 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 settings = Settings()
 
 if not settings.DATABASE_URL:
-    if settings.DB_ENGINE == "sqlite" or settings.ENV == "local":
+    if settings.DB_ENGINE == "sqlite" and settings.ENV == "local":
         settings.DATABASE_URL = f"sqlite+aiosqlite:///{BASE_DIR}/{settings.ENV}.sqlite3"
     elif settings.DB_ENGINE == "mysql":
         settings.DATABASE_URL = f"mysql+aiomysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"

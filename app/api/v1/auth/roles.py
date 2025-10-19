@@ -31,6 +31,7 @@ from app.core.loggers import app_logger as logger
 from app.cruds.activity_logs import activity_log_crud
 from app.schemas.activity_logs import ActivityLogCreateSchema
 from app.core.defaults import default_roles
+from app.schemas.validate_uuid import UUIDStr
 
 
 class RoleRouter:
@@ -227,7 +228,7 @@ class RoleRouter:
 
     async def get(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         filters: RoleFilters = Depends(),
         user: User = Depends(get_user_with_permission("can_read_roles")),
         db: AsyncSession = Depends(get_async_session),
@@ -252,7 +253,7 @@ class RoleRouter:
 
     async def update(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         data: RoleUpdateSchema,
         user: User = Depends(get_user_with_permission("can_write_roles")),
         db: AsyncSession = Depends(get_async_session),
@@ -296,7 +297,7 @@ class RoleRouter:
 
     async def update_role_with_permissions(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         data: RoleWithPermissionsUpdateSchema,
         user: User = Depends(get_user_with_permission("can_write_roles")),
         db: AsyncSession = Depends(get_async_session),
@@ -367,7 +368,7 @@ class RoleRouter:
 
     async def delete(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):

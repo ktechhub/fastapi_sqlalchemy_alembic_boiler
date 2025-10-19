@@ -8,13 +8,14 @@ from .base_schema import (
 from .users import UserSchema
 from .roles import RoleSchema
 from .base_filters import BaseFilters
+from .validate_uuid import UUIDStr
 
 """UserRole Schema"""
 
 
 class UserRoleBaseSchema(BaseModel):
-    role_uuid: UUID4 | str
-    user_uuid: UUID4 | str
+    role_uuid: UUIDStr
+    user_uuid: UUIDStr
 
 
 class UserRoleCreateSchema(UserRoleBaseSchema):
@@ -31,8 +32,8 @@ class UserRoleSchema(UserRoleBaseSchema, BaseUUIDSchema):
 
 
 class UserRoleFilter(BaseModel):
-    role_uuid: Optional[UUID4 | str] = None
-    user_uuid: Optional[UUID4 | str] = None
+    role_uuid: Optional[UUIDStr] = None
+    user_uuid: Optional[UUIDStr] = None
 
 
 class UserRoleResponseSchema(BaseResponseSchema):
@@ -48,5 +49,5 @@ class UserRoleTotalCountListResponseSchema(BaseTotalCountResponseSchema):
 
 
 class UserRoleFilters(BaseFilters):
-    role_uuid: Optional[UUID4 | str] = None
-    user_uuid: Optional[UUID4 | str] = None
+    role_uuid: Optional[UUIDStr] = None
+    user_uuid: Optional[UUIDStr] = None

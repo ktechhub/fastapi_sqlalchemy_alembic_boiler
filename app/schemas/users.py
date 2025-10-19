@@ -9,6 +9,7 @@ from .base_schema import (
 )
 from ..core.constants import DISPOSABLE_EMAIL_DOMAINS
 from .base_filters import BaseFilters
+from .validate_uuid import UUIDStr
 
 PasswordStr = Annotated[str, constr(min_length=8)]
 PhoneStr = Annotated[str, constr(min_length=10, max_length=15)]
@@ -67,7 +68,7 @@ class RecruitTotalCountListResponseSchema(BaseTotalCountResponseSchema):
 
 
 class RecruitsUUIDSchema(BaseModel):
-    uuids: List[str] = Field(
+    uuids: List[UUIDStr] = Field(
         [],
         description="List of user uuids",
         examples=[
@@ -232,7 +233,7 @@ class AdminUpdateUserSchema(BaseModel):
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
     national_id: Optional[str] = None
-    role_uuid: str = Field(
+    role_uuid: UUIDStr = Field(
         None,
         description="Comma separated list of role uuids",
         examples=["d6fbbd0a-fbb5-4e67-93c1-4323e30a817f"],
@@ -288,7 +289,7 @@ class UserInitializeSchema(BaseModel):
 
 class AdminUserCreateSchema(BaseModel):
     email: EmailStr
-    role_uuid: str = Field(
+    role_uuid: UUIDStr = Field(
         ...,
         description="Comma separated list of role uuids",
         examples=["d6fbbd0a-fbb5-4e67-93c1-4323e30a817f"],

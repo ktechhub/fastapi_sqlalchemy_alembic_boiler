@@ -19,8 +19,6 @@ from app.utils.object_storage import save_file_to_s3
 from app.database.get_session import get_async_session
 from app.core.constants import ALLOWED_IMAGE_EXTENSIONS
 from app.core.loggers import app_logger as logger
-from app.cruds.activity_logs import activity_log_crud
-from app.schemas.activity_logs import ActivityLogCreateSchema
 
 
 class UserProfileRouter:

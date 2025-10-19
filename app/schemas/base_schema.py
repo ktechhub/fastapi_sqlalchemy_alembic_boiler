@@ -2,6 +2,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from pydantic import ConfigDict
 from datetime import datetime
+from .validate_uuid import UUIDStr
 
 
 class BaseSchema(BaseModel):
@@ -33,7 +34,7 @@ class BaseUUIDSchema(BaseModel):
     Includes fields for tracking views and timestamps for creation and updates.
     """
 
-    uuid: Optional[str] = Field(
+    uuid: Optional[UUIDStr] = Field(
         default=None, description="Unique UUID identifier of the entity."
     )
     views: Optional[int] = Field(

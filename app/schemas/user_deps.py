@@ -1,10 +1,11 @@
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, date
+from .validate_uuid import UUIDStr
 
 
 class Role(BaseModel):
-    uuid: Optional[str] = None
+    uuid: Optional[UUIDStr] = None
     views: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -16,7 +17,7 @@ class Role(BaseModel):
 
 
 class PermissionSchema(BaseModel):
-    uuid: Optional[str] = None
+    uuid: Optional[UUIDStr] = None
     views: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -27,7 +28,7 @@ class PermissionSchema(BaseModel):
 
 
 class UserDepSchema(BaseModel):
-    uuid: str
+    uuid: UUIDStr
     views: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

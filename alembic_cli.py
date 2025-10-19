@@ -25,10 +25,11 @@ import argparse
 from alembic.config import Config
 from alembic import command
 from dotenv import load_dotenv
-from app.core.config import settings
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=".env")
+from app.core.config import settings
+
 
 # Define available databases (from environment variable or default to 'dev')
 DATABASES = os.getenv("DATABASES", "dev").split(",")

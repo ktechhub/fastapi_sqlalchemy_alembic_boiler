@@ -2,6 +2,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from ..core.config import settings
+from ..core.loggers import db_logger as logger
 
 # Use the dynamically set DATABASE_URL
 DATABASE_URL = settings.DATABASE_URL

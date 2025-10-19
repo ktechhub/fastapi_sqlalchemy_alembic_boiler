@@ -20,8 +20,7 @@ from app.cruds.role_permissions import role_permission_crud
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
 from app.cruds.permissions import permission_crud
-from app.cruds.activity_logs import activity_log_crud
-from app.schemas.activity_logs import ActivityLogCreateSchema
+from app.schemas.validate_uuid import UUIDStr
 
 
 class RolePermissionRouter:
@@ -176,8 +175,8 @@ class RolePermissionRouter:
 
     async def get(
         self,
-        uuid: str,
-        # user: User = Depends(get_user_with_permission("can_read_role_permissions")),
+        uuid: UUIDStr,
+        user: User = Depends(get_user_with_permission("can_read_role_permissions")),
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Fetching {self.singular} with uuid: {uuid}")
@@ -197,7 +196,7 @@ class RolePermissionRouter:
 
     async def remove(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_role_permissions")),
         db: AsyncSession = Depends(get_async_session),
     ):

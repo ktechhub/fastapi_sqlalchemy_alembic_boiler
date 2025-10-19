@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional, Annotated
 from pydantic import BaseModel, constr
 from .base_schema import BaseUUIDSchema, BaseResponseSchema
+from .validate_uuid import UUIDStr
 
 TypeStr = Annotated[str, constr(min_length=1, max_length=50)]
 CodeStr = Annotated[str, constr(min_length=1, max_length=8)]
@@ -9,12 +10,12 @@ CodeStr = Annotated[str, constr(min_length=1, max_length=8)]
 
 class VerificationCodeBase(BaseModel):
     type: constr(min_length=1, max_length=50) = "confirm_email"  # type: ignore
-    user_uuid: str
+    user_uuid: UUIDStr
 
 
 class VerificationCodeBaseSchema(BaseModel):
     type: TypeStr = "confirm_email"
-    user_uuid: str
+    user_uuid: UUIDStr
     expires_at: Optional[datetime] = None
 
     class Config:

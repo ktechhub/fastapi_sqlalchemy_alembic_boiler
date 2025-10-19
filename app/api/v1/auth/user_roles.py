@@ -16,6 +16,7 @@ from app.models.users import User
 from app.cruds.user_roles import user_roles_crud
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
+from app.schemas.validate_uuid import UUIDStr
 
 
 class UserRoleRouter:
@@ -68,7 +69,7 @@ class UserRoleRouter:
 
     async def remove(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_user_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):

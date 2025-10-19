@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.responses import (
@@ -13,11 +14,11 @@ from app.schemas.permissions import (
     PermissionTotalCountListResponseSchema,
     PermissionFiltersSchema,
 )
+from app.schemas.validate_uuid import UUIDStr
 from app.models.users import User
 from app.cruds.permissions import permission_crud
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
-from typing import Optional
 
 
 def get_internal_label(label: Optional[str] = Query(None, include_in_schema=False)):  # type: ignore
@@ -136,7 +137,7 @@ class PermissionRouter:
 
     async def get(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         filters: PermissionFiltersSchema = Depends(),
         user: User = Depends(get_user_with_permission("can_read_permissions")),
         db: AsyncSession = Depends(get_async_session),
@@ -156,7 +157,7 @@ class PermissionRouter:
 
     async def update(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         data: PermissionUpdateSchema,
         user: User = Depends(get_user_with_permission("can_write_permissions")),
         db: AsyncSession = Depends(get_async_session),
@@ -183,7 +184,7 @@ class PermissionRouter:
 
     async def delete(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_permissions")),
         db: AsyncSession = Depends(get_async_session),
     ):

@@ -30,6 +30,7 @@ from app.core.loggers import app_logger as logger
 from app.services.redis_push import redis_lpush
 from app.cruds.activity_logs import activity_log_crud
 from app.schemas.activity_logs import ActivityLogCreateSchema
+from app.schemas.validate_uuid import UUIDStr
 
 
 class UserRouter:
@@ -301,7 +302,7 @@ class UserRouter:
 
     async def get(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_read_users")),
         db: AsyncSession = Depends(get_async_session),
     ):
@@ -319,7 +320,7 @@ class UserRouter:
 
     async def update(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         data: AdminUpdateUserSchema,
         user: User = Depends(get_user_with_permission("can_write_users")),
         db: AsyncSession = Depends(get_async_session),
@@ -397,7 +398,7 @@ class UserRouter:
 
     async def delete(
         self,
-        uuid: str,
+        uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_users")),
         db: AsyncSession = Depends(get_async_session),
     ):
@@ -453,8 +454,8 @@ class UserRouter:
 
     async def remove_user_roles(
         self,
-        user_uuid: str,
-        role_uuid: str,
+        user_uuid: UUIDStr,
+        role_uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_users")),
         db: AsyncSession = Depends(get_async_session),
     ):

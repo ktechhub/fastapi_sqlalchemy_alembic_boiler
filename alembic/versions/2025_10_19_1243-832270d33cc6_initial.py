@@ -1,8 +1,8 @@
 """initial
 
-Revision ID: 82d7e608eb37
+Revision ID: 832270d33cc6
 Revises:
-Create Date: 2025-06-17 16:49:09.019988
+Create Date: 2025-10-19 12:43:01.977534
 
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "82d7e608eb37"
+revision: str = "832270d33cc6"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -118,6 +118,48 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_users_created_at"), "users", ["created_at"], unique=False)
     op.create_index(op.f("ix_users_updated_at"), "users", ["updated_at"], unique=False)
+    op.create_table(
+        "activity_logs",
+        sa.Column("user_uuid", sa.String(length=36), nullable=True),
+        sa.Column("entity", sa.String(length=50), nullable=False),
+        sa.Column("previous_data", sa.JSON(), nullable=True),
+        sa.Column("new_data", sa.JSON(), nullable=True),
+        sa.Column("action", sa.String(length=50), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("delete_protection", sa.Boolean(), nullable=False),
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("views", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_uuid"],
+            ["users.uuid"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        op.f("ix_activity_logs_created_at"),
+        "activity_logs",
+        ["created_at"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_activity_logs_updated_at"),
+        "activity_logs",
+        ["updated_at"],
+        unique=False,
+    )
     op.create_table(
         "role_permissions",
         sa.Column("role_uuid", sa.String(length=36), nullable=False),
@@ -262,6 +304,9 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_role_permissions_updated_at"), table_name="role_permissions")
     op.drop_index(op.f("ix_role_permissions_created_at"), table_name="role_permissions")
     op.drop_table("role_permissions")
+    op.drop_index(op.f("ix_activity_logs_updated_at"), table_name="activity_logs")
+    op.drop_index(op.f("ix_activity_logs_created_at"), table_name="activity_logs")
+    op.drop_table("activity_logs")
     op.drop_index(op.f("ix_users_updated_at"), table_name="users")
     op.drop_index(op.f("ix_users_created_at"), table_name="users")
     op.drop_table("users")

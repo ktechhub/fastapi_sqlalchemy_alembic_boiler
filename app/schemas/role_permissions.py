@@ -8,13 +8,14 @@ from .base_schema import (
 from .permissions import PermissionSchema
 from .roles import RoleWithOutPermissionsSchema
 from .base_filters import BaseFilters
+from .validate_uuid import UUIDStr
 
 """RolePermission Schema"""
 
 
 class RolePermissionBaseSchema(BaseModel):
-    role_uuid: UUID4 | str
-    permission_uuid: UUID4 | str
+    role_uuid: UUIDStr
+    permission_uuid: UUIDStr
 
 
 class RolePermissionCreateSchema(RolePermissionBaseSchema):
@@ -31,8 +32,8 @@ class RolePermissionSchema(RolePermissionBaseSchema, BaseUUIDSchema):
 
 
 class RolePermissionFilter(BaseModel):
-    role_uuid: Optional[UUID4 | str] = None
-    permission_uuid: Optional[UUID4 | str] = None
+    role_uuid: Optional[UUIDStr] = None
+    permission_uuid: Optional[UUIDStr] = None
 
 
 class RolePermissionResponseSchema(BaseResponseSchema):
@@ -48,8 +49,8 @@ class RolePermissionTotalCountListResponseSchema(BaseTotalCountResponseSchema):
 
 
 class RolePermissionFilters(BaseFilters):
-    role_uuid: Optional[UUID4 | str] = None
-    permission_uuid: Optional[UUID4 | str] = None
+    role_uuid: Optional[UUIDStr] = None
+    permission_uuid: Optional[UUIDStr] = None
     include_relations: Optional[str] = Field(
         "role,permission",
         description="A comma-separated list of related models to include in the result set (e.g., 'role,permission')",
@@ -58,5 +59,5 @@ class RolePermissionFilters(BaseFilters):
 
 
 class RolePermissionCreateMultiSchema(BaseModel):
-    role_uuid: str
+    role_uuid: UUIDStr
     permissions: List[str]
