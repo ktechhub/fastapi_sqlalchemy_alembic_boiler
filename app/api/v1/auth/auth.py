@@ -209,8 +209,8 @@ class AuthRouter:
                     "data": {
                         "to": user.email,
                         "subject": "Verify your email",
+                        "salutation": f"Hi {user.first_name},",
                         "body": f"""
-                        <p>Hi {user.first_name},</p><br>
                         <p>Use the code below to verify your email: <br><b> {verification_code.code}</p>
                         """,
                         "queue_name": "notifications",
@@ -292,8 +292,8 @@ class AuthRouter:
                     "data": {
                         "to": db_user.email,
                         "subject": "Verify your email",
+                        "salutation": f"Hi {db_user.first_name},",
                         "body": f"""
-                            <p>Hi {db_user.first_name},</p><br>
                             <p>Use the code below to verify your email: <br><b> {verification_code.code}</p>
                             """,
                         "queue_name": "notifications",
@@ -347,8 +347,8 @@ class AuthRouter:
                 "data": {
                     "to": db_user.email,
                     "subject": "Verify your email",
+                    "salutation": f"Hi {db_user.first_name},",
                     "body": f"""
-                        <p>Hi {db_user.first_name},</p><br>
                         <p>Use the code below to verify your email: <br><b> {verification_code.code}</p>
                         """,
                     "queue_name": "notifications",
@@ -539,8 +539,8 @@ class AuthRouter:
                     "data": {
                         "to": db_user.email,
                         "subject": "Reset your password",
+                        "salutation": f"Hi {db_user.first_name},",
                         "body": f"""
-                            <p>Hi {db_user.first_name},</p><br>
                             <p>Use the code below to reset your password: <br><b>{verification_code.code}</b></p>
                             <p>Click <a href="{url}">here</a> to reset your password on web.</p></b></b>
                             <p>Or copy and paste this link in your browser: <br> {url}</p>

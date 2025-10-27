@@ -194,8 +194,8 @@ class UserRouter:
                     "data": {
                         "to": new_user.email,
                         "subject": "Initialize your account",
+                        "salutation": f"Hi,",
                         "body": f"""
-                            <p>Hi,</p>
                             <p>Welcome! Click the link below to initialize your account and set your password:</p>
                             <p><a href="{initialize_url}">Initialize Account</a></p>
                             <p>If you didn’t request this, you can safely ignore this email.</p>
@@ -237,8 +237,8 @@ class UserRouter:
                 "data": {
                     "to": db_user.email,
                     "subject": "Initialize your account",
+                    "salutation": f"Hi,",
                     "body": f"""
-                    <p>Hi,</p>
                     <p>Welcome! Click the link below to initialize your account and set your password:</p>
                     <p><a href="{initialize_url}">Initialize Account</a></p>
                     <p>If you didn’t request this, you can safely ignore this email.</p>
