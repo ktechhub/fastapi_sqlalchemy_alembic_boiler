@@ -114,9 +114,9 @@ class EmailService:
             recipients=recipients,
             body=html,
             subtype=MessageType.html,
-            cc=cc,
-            bcc=bcc,
-            reply_to=reply_to,
+            cc=cc or [],
+            bcc=bcc or [],
+            reply_to=reply_to or [],
         )
 
     async def send_email(
@@ -141,7 +141,9 @@ class EmailService:
             reply_to (Optional[str], optional): Reply-to email. Defaults to None.
         """
         html = get_basic_template("Media Transcribe", subject, salutation, content)
-        message = self.get_mail_message(recipients, subject, html, cc, bcc, reply_to)
+        message = self.get_mail_message(
+            recipients, subject, html, cc=cc, bcc=bcc, reply_to=reply_to
+        )
 
         fm = FastMail(self.conf)
         await fm.send_message(message)

@@ -15,7 +15,7 @@ class MeiliSearchService:
     def __init__(
         self,
         meili_client: meilisearch.Client = meili_client,
-        index_name: str = "ktechhub",
+        index_name: str = settings.MEILI_SEARCH_INDEX,
     ):
         """
         Initialize the service with a Meilisearch client and an index name.

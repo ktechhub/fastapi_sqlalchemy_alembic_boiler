@@ -466,7 +466,7 @@ class AuthRouter:
             user_uuid=db_user.uuid,
         )
         logger.info(f"User {db_user.email} password created successfully.")
-        return success_response("Password created successfully.", None)
+        return success_response("Password created successfully.")
 
     async def initialize_account(
         self,

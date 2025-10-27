@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database.base_class import Base
 from .base_mixins import BaseUUIDModelMixin, SoftDeleteMixin
+from .s3_url_mixin import S3URLMixin
 
 if TYPE_CHECKING:
     from .codes import VerificationCode
@@ -18,8 +19,11 @@ else:
     ActivityLog = "ActivityLog"
 
 
-class User(Base, BaseUUIDModelMixin, SoftDeleteMixin):
+class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
     __tablename__ = "users"
+
+    # Specify which fields contain S3 URLs that need presigned URLs
+    _s3_url_fields = ["avatar"]
 
     first_name: Mapped[str] = mapped_column(String(130), nullable=False)
     last_name: Mapped[str] = mapped_column(String(130), nullable=False)

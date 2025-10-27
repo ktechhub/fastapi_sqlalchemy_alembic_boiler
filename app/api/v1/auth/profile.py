@@ -115,7 +115,9 @@ class UserProfileRouter:
             logger.error(f"Error updating user password: {str(e)}")
             return bad_request_response(f"Error updating user password: {str(e)}")
         logger.info(f"Password updated successfully for user {updated_user.email}")
-        return success_response("Password updated successfully.", db_user.to_dict())
+        return success_response(
+            "Password updated successfully.", data=db_user.to_dict()
+        )
 
     async def update_profile(
         self,

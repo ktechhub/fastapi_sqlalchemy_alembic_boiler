@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # Meilisearch Configuration
     MEILI_SEARCH_URL: str = ""
     MEILI_SEARCH_API_KEY: str = ""
+    MEILI_SEARCH_INDEX: str = "ktechhub"
 
     MAILJET_API_KEY: str = ""
     MAILJET_API_SECRET: str = ""

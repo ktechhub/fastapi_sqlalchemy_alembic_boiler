@@ -187,7 +187,7 @@ class SetupLogger:
 app_logger = SetupLogger(
     "app_logger",
     "logs/app_logger.log",
-    meili_index="logs",
+    meili_index=settings.MEILI_SEARCH_INDEX,
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -195,7 +195,7 @@ app_logger = SetupLogger(
 db_logger = SetupLogger(
     "db_logger",
     "logs/db_logger.log",
-    meili_index="logs",
+    meili_index=settings.MEILI_SEARCH_INDEX,
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -203,7 +203,7 @@ db_logger = SetupLogger(
 security_logger = SetupLogger(
     "security_logger",
     "logs/security_logger.log",
-    meili_index="logs",
+    meili_index=settings.MEILI_SEARCH_INDEX,
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -211,7 +211,7 @@ security_logger = SetupLogger(
 scheduler_logger = SetupLogger(
     "scheduler_logger",
     "logs/scheduler_logger.log",
-    meili_index="logs",
+    meili_index=settings.MEILI_SEARCH_INDEX,
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
@@ -219,7 +219,7 @@ scheduler_logger = SetupLogger(
 redis_logger = SetupLogger(
     "redis_logger",
     "logs/redis_logger.log",
-    meili_index="logs",
+    meili_index=settings.MEILI_SEARCH_INDEX,
     use_size_rotation=True,
     use_time_rotation=True,
     time_backup_count=3,  # Keep only 3 days of logs
