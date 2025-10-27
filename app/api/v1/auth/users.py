@@ -47,7 +47,7 @@ class UserRouter:
             "/", self.create, methods=["POST"], response_model=self.response_model
         )
         self.router.add_api_route(
-            "/resend-initialization-email",
+            "/resend-initialization-email/",
             self.resend_initialization_email,
             methods=["POST"],
             response_model=self.response_model,
