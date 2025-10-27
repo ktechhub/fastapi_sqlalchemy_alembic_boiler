@@ -7,7 +7,7 @@ from .email_templates import get_basic_template, get_welcome_email_template
 
 
 class EmailService:
-    def __init__(self, sender: str = "no-reply@mediatranscribe.com"):
+    def __init__(self, sender: str = f"no-reply@{settings.DOMAIN}.com"):
         self.sender = sender
         self.sendgrid = SendGridAPIClient(settings.SENDGRID_API_KEY)
 
@@ -63,7 +63,7 @@ class EmailService:
         Returns:
             None
         """
-        html = get_basic_template("Media Transcribe", subject, salutation, content)
+        html = get_basic_template(settings.APP_NAME, subject, salutation, content)
         mail = self.get_mail(recipients, subject, html, cc, bcc, reply_to)
         self.sendgrid.send(mail)
         logger.info(f"Email sent to {recipients} with subject '{subject}'")
@@ -106,7 +106,7 @@ class EmailService:
         Returns:
             None
         """
-        subject = "Welcome to Media Transcribe"
+        subject = f"Welcome to {settings.APP_NAME}"
         html = get_welcome_email_template(name)
         mail = self.get_mail([email], subject, html, cc, bcc, reply_to)
         self.sendgrid.send(mail)

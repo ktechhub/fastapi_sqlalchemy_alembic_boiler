@@ -7,8 +7,8 @@ from .email_templates import get_basic_template, get_welcome_email_template
 class EmailService:
     def __init__(
         self,
-        sender: str = "no-reply@mediatranscribe.com",
-        sender_name: str = "Media Transcribe",
+        sender: str = f"no-reply@{settings.DOMAIN}.com",
+        sender_name: str = settings.APP_NAME,
     ):
         self.sender = sender
         self.sender_name = sender_name
@@ -79,7 +79,7 @@ class EmailService:
         Returns:
             None
         """
-        html = get_basic_template("Media Transcribe", subject, salutation, content)
+        html = get_basic_template(settings.APP_NAME, subject, salutation, content)
         data = self.get_mail_data(recipients, subject, html, cc, bcc, reply_to)
         result = self.mailjet.send.create(data=data)
         logger.info(
@@ -126,7 +126,7 @@ class EmailService:
         Returns:
             None
         """
-        subject = "Welcome to Media Transcribe"
+        subject = f"Welcome to {settings.APP_NAME}"
         html = get_welcome_email_template(name)
         data = self.get_mail_data([email], subject, html, cc, bcc, reply_to)
         result = self.mailjet.send.create(data=data)

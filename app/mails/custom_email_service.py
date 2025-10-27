@@ -140,7 +140,7 @@ class EmailService:
             bcc (Optional[List[str]], optional): BCC recipients. Defaults to None.
             reply_to (Optional[str], optional): Reply-to email. Defaults to None.
         """
-        html = get_basic_template("Media Transcribe", subject, salutation, content)
+        html = get_basic_template(settings.APP_NAME, subject, salutation, content)
         message = self.get_mail_message(
             recipients, subject, html, cc=cc, bcc=bcc, reply_to=reply_to
         )
@@ -195,7 +195,7 @@ class EmailService:
             bcc (Optional[List[str]], optional): BCC recipients. Defaults to None.
             reply_to (Optional[str], optional): Reply-to email. Defaults to None.
         """
-        subject = "Welcome to Media Transcribe"
+        subject = f"Welcome to {settings.APP_NAME}"
         html = get_welcome_email_template(name)
         message = self.get_mail_message([email], subject, html, cc, bcc, reply_to)
 
