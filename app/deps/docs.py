@@ -27,12 +27,6 @@ async def get_current_docs_user(
     credentials: HTTPBasicCredentials = Depends(security),
     db: AsyncSession = Depends(get_async_session),
 ) -> User:
-    # correct_username = secrets.compare_digest(
-    #     credentials.username, settings.API_DOCS_USERNAME
-    # )
-    # correct_password = secrets.compare_digest(
-    #     credentials.password, settings.API_DOCS_PASSWORD
-    # )
     if settings.ENV == "local":
         return User(
             email=f"developer@{settings.DOMAIN}",

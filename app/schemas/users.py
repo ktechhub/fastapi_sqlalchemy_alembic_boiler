@@ -10,10 +10,12 @@ from .base_schema import (
 from ..core.constants import DISPOSABLE_EMAIL_DOMAINS
 from .base_filters import BaseFilters
 from .validate_uuid import UUIDStr
+from app.utils.responses import bad_request_response
 
 PasswordStr = Annotated[str, constr(min_length=8)]
 PhoneStr = Annotated[str, constr(min_length=10, max_length=15)]
 NationalIDStr = Annotated[str, constr(min_length=8, max_length=20)]
+GenderType = Literal["male", "female", "other"]
 
 
 class UserBaseSchema(BaseModel):
@@ -24,60 +26,34 @@ class UserBaseSchema(BaseModel):
     national_id: Optional[NationalIDStr] = None
     address: Optional[str] = Field(None, max_length=255)
     digital_address: Optional[str] = Field(None, max_length=20)
-    gender: Optional[Literal["male", "female", "other"]] = Field("other", max_length=10)
-
-    # @field_validator("email")
-    # def validate_email(cls, value):
-    #     domain = value.split("@")[1]
-    #     if domain in DISPOSABLE_EMAIL_DOMAINS:
-    #         raise ValueError(f"Email is not allowed")
-    #     try:
-    #         # Check for MX records
-    #         answers = dns.resolver.resolve(domain, "MX")
-    #         if not answers:
-    #             raise ValueError(
-    #                 f"Email domain {domain} does not have valid MX records"
-    #             )
-    #     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
-    #         raise ValueError(f"Email domain {domain} does not have valid MX records")
-
-    #     except Exception as e:
-    #         raise ValueError(f"Email domain {domain} does not have valid MX records")
-    #     return value
+    gender: Optional[GenderType] = Field("other", max_length=10)
 
 
-class RecruitUserCreateSchema(UserBaseSchema):
-    date_of_birth: Optional[date] = None
+class EmailValidationSchema(BaseModel):
+    email: EmailStr
 
+    @field_validator("email")
+    def validate_email(cls, value):
+        domain = value.split("@")[1]
+        if domain in DISPOSABLE_EMAIL_DOMAINS:
+            return bad_request_response(f"Email is not allowed")
+        try:
+            # Check for MX records
+            answers = dns.resolver.resolve(domain, "MX")
+            if not answers:
+                return bad_request_response(
+                    f"Email domain {domain} does not have valid MX records"
+                )
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
+            return bad_request_response(
+                f"Email domain {domain} does not have valid MX records"
+            )
 
-class RecruitConfirmInvitationSchema(RecruitUserCreateSchema):
-    password: PasswordStr
-
-
-class RecruitSchema(UserBaseSchema, BaseUUIDSchema):
-    status: Optional[str] = None
-    date_of_birth: Optional[date] = None
-
-
-class RecruitResponseSchema(BaseResponseSchema):
-    data: Optional[RecruitSchema] = None
-
-
-class RecruitTotalCountListResponseSchema(BaseTotalCountResponseSchema):
-    data: Optional[List[RecruitSchema]] = None
-
-
-class RecruitsUUIDSchema(BaseModel):
-    uuids: List[UUIDStr] = Field(
-        [],
-        description="List of user uuids",
-        examples=[
-            [
-                "d6fbbd0a-fbb5-4e67-93c1-4323e30a817f",
-                "d6fbbd0a-fbb5-4e67-93c1-4323e30a817f",
-            ]
-        ],
-    )
+        except Exception as e:
+            return bad_request_response(
+                f"Email domain {domain} does not have valid MX records"
+            )
+        return value
 
 
 default_export_columns = [
@@ -93,73 +69,25 @@ default_export_columns = [
 ]
 
 
-class RecruitExportSchema(BaseModel):
-    fields: Optional[List[str]] = Field(
-        None,
-        description="List of fields to include in the export. "
-        "If omitted, the default fields will be used.",
-        example=default_export_columns,
-        min_items=1,
-    )
-    emails: List[EmailStr] = Field(
-        ...,
-        description="List of email addresses to send the export to",
-        example=["user@example.com", "user2@example.com"],
-        min_items=1,
-    )
-
-    @classmethod
-    def validate_fields(cls, fields: Optional[List[str]]) -> List[str]:
-        """Ensure that only allowed fields are selected."""
-        if not fields:
-            return default_export_columns  # Return all allowed fields if none provided
-
-        invalid_fields = set(fields) - set(default_export_columns)
-        if invalid_fields:
-            raise ValueError(f"Invalid fields: {', '.join(invalid_fields)}")
-
-        return fields
-
-
 class UserCreateSchema(UserBaseSchema):
     password: PasswordStr
     confirm_password: str
-    user_type: Literal["user", "agent", "company"] = "user"
+    user_type: Literal["user", "company"] = "user"
 
     @field_validator("password", "confirm_password")
     def validate_password_complexity(cls, value):
         # Check password complexity requirements here
         if not any(char.isupper() for char in value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            return bad_request_response(
+                "Password must contain at least one uppercase letter"
+            )
         if not any(char.isdigit() for char in value):
-            raise ValueError("Password must contain at least one digit")
+            return bad_request_response("Password must contain at least one digit")
         return value
 
 
-class SendVerificationEmailSchema(BaseModel):
-    email: EmailStr
-    # type: Literal["confirm_email", "reset_password", "change_password"] = (
-    #     "confirm_email"
-    # )
-
-    # @field_validator("email")
-    # def validate_email(cls, value):
-    #     domain = value.split("@")[1]
-    #     if domain in DISPOSABLE_EMAIL_DOMAINS:
-    #         raise ValueError(f"Email is not allowed")
-    #     try:
-    #         # Check for MX records
-    #         answers = dns.resolver.resolve(domain, "MX")
-    #         if not answers:
-    #             raise ValueError(
-    #                 f"Email domain {domain} does not have valid MX records"
-    #             )
-    #     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
-    #         raise ValueError(f"Email domain {domain} does not have valid MX records")
-
-    #     except Exception as e:
-    #         raise ValueError(f"Email domain {domain} does not have valid MX records")
-    #     return value
+class SendVerificationEmailSchema(EmailValidationSchema):
+    pass
 
 
 class ResendSendVerificationCodeSchema(SendVerificationEmailSchema):
@@ -168,23 +96,23 @@ class ResendSendVerificationCodeSchema(SendVerificationEmailSchema):
     )
 
 
-class UserConfirmEmailSchema(BaseModel):
-    email: EmailStr
+class UserConfirmEmailSchema(EmailValidationSchema):
     code: Annotated[str, constr(min_length=1, max_length=8)]
 
 
-class UserConfirmForgetPasswordSchema(BaseModel):
-    email: EmailStr
+class UserConfirmForgetPasswordSchema(EmailValidationSchema):
     code: Annotated[str, constr(min_length=1, max_length=8)]
-    password: constr(min_length=8)  # type: ignore
+    password: PasswordStr
 
     @field_validator("password")
     def validate_password_complexity(cls, value):
         # Check password complexity requirements here
         if not any(char.isupper() for char in value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            return bad_request_response(
+                "Password must contain at least one uppercase letter"
+            )
         if not any(char.isdigit() for char in value):
-            raise ValueError("Password must contain at least one digit")
+            return bad_request_response("Password must contain at least one digit")
         return value
 
 
@@ -227,7 +155,7 @@ class AdminUpdateUserSchema(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[PhoneStr] = None
-    gender: Optional[Literal["male", "female", "other"]] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -244,7 +172,7 @@ class AdminUpdateFieldOfficerSchema(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[PhoneStr] = None
-    gender: Optional[Literal["male", "female", "other"]] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -281,9 +209,11 @@ class UserInitializeSchema(BaseModel):
     def validate_password_complexity(cls, value):
         # Check password complexity requirements here
         if not any(char.isupper() for char in value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            return bad_request_response(
+                "Password must contain at least one uppercase letter"
+            )
         if not any(char.isdigit() for char in value):
-            raise ValueError("Password must contain at least one digit")
+            return bad_request_response("Password must contain at least one digit")
         return value
 
 
@@ -294,14 +224,6 @@ class AdminUserCreateSchema(BaseModel):
         description="Comma separated list of role uuids",
         examples=["d6fbbd0a-fbb5-4e67-93c1-4323e30a817f"],
     )
-
-
-class AgentUserCreateSchema(BaseModel):
-    email: EmailStr
-
-
-class AgentWeekPropertyCountResponseSchema(BaseResponseSchema):
-    data: int
 
 
 class AdminSendEmailSchema(BaseModel):
@@ -316,17 +238,19 @@ class UserUpdateNewPasswordSchema(BaseModel):
     def validate_password_complexity(cls, value):
         # Check password complexity requirements here
         if not any(char.isupper() for char in value):
-            raise ValueError("Password must contain at least one uppercase letter")
+            return bad_request_response(
+                "Password must contain at least one uppercase letter"
+            )
         if not any(char.isdigit() for char in value):
-            raise ValueError("Password must contain at least one digit")
+            return bad_request_response("Password must contain at least one digit")
         return value
 
 
-class userUpdateProfileSchema(BaseModel):
+class UserUpdateProfileSchema(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[PhoneStr] = None
-    gender: Optional[Literal["male", "female", "other"]] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -360,7 +284,7 @@ class UserWithoutRoutesSchema(UserUpdateSchema, BaseUUIDSchema):
     is_verified: bool = False
     verified_at: Optional[datetime] | None = None
     phone_number: Optional[str] = None
-    gender: Optional[str] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -373,7 +297,7 @@ class UserSchema(UserUpdateSchema, BaseUUIDSchema):
     is_verified: bool = False
     verified_at: Optional[datetime] | None = None
     phone_number: Optional[str] = None
-    gender: Optional[str] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
@@ -411,7 +335,7 @@ class UserFilters(BaseFilters):
     is_verified: Optional[bool] = None
     verified_at: Optional[datetime] | None = None
     phone_number: Optional[str] = None
-    gender: Optional[str] = None
+    gender: Optional[GenderType] = None
     address: Optional[str] = None
     digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None

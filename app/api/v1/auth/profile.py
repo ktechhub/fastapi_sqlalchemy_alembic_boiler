@@ -12,7 +12,7 @@ from app.schemas.users import (
     UserResponseSchema,
     UserUpdateNewPasswordSchema,
     UserUpdateWithPasswordSchema,
-    userUpdateProfileSchema,
+    UserUpdateProfileSchema,
     UserUpdateSchema,
 )
 from app.utils.object_storage import save_file_to_s3
@@ -121,7 +121,7 @@ class UserProfileRouter:
 
     async def update_profile(
         self,
-        data: userUpdateProfileSchema,
+        data: UserUpdateProfileSchema,
         session: AsyncSession = Depends(get_async_session),
         user: User = Depends(get_current_user),
     ):
@@ -182,7 +182,7 @@ class UserProfileRouter:
             file_object=avatar,
             extension=f".{str(avatar_extension)}",
             folder="users/avatars",
-            access_type="public",
+            access_type="private",
         )
         logger.info(
             f"Avatar URL {avatar_url} generated successfully for user {user.email}"

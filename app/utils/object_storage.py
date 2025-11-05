@@ -13,7 +13,7 @@ async def save_file_to_s3(
     file_object,
     extension=".png",
     folder="general",
-    access_type="public",
+    access_type="private",
     expires_in=3600 * 24 * 7,  # 7 days (max allowed by AWS S3)
 ) -> str:
     """
@@ -130,7 +130,7 @@ async def save_bytesio_to_s3(
     file_bytes: BytesIO,
     extension=".csv",
     folder="exports",
-    access_type="public",
+    access_type="private",
     expires_in=3600 * 24 * 7,  # 7 days (max allowed by AWS S3)
 ) -> str:
     """
@@ -220,14 +220,12 @@ def get_private_file_url(full_url, expires_in=3600 * 24 * 30):
     Generates a pre-signed URL for accessing private files in Object Storage.
     If the input URL is already a pre-signed URL, it will be returned as-is.
 
-    :param full_url: The complete URL of the file (e.g., 'https://host/mediatranscribe/media/users/1729174884.288935_hero_person.png').
+    :param full_url: The complete URL of the file (e.g., 'https://host/bucket/media/users/1729174884.288935_hero_person.png').
     :param expires_in: The expiration time in seconds for the pre-signed URL if the file is private if access_type is private (default is 7 days, max allowed by AWS S3).
     :return: A pre-signed URL that allows temporary access to the private file.
     """
     # Remove query parameters to get the base URL (in case it's an expired pre-signed URL)
     base_url = full_url.split("?")[0]
-
-    print(f"Base URL: {base_url}")
 
     # Extract file key from the base URL
     try:
@@ -237,8 +235,6 @@ def get_private_file_url(full_url, expires_in=3600 * 24 * 30):
     except IndexError:
         # If the URL doesn't match the expected pattern, try to extract from the end
         file_key = base_url.split("/")[-1]
-
-    print(f"File key: {file_key}")
 
     # Initialize the S3 client
     session = boto3.session.Session()

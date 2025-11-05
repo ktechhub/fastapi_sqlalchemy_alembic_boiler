@@ -6,12 +6,9 @@ from .openapi_configs import OPENAPI_TAGS, OPENAPI_SERVERS, LICENSE_INFO
 
 class Settings(BaseSettings):
     APP_NAME: str = "Ktechhub"
+    APP_URL: str = "https://www.ktechhub.com"
+    CONTACT_EMAIL: str = "info@ktechhub.com"
     API_VERSION: str = "1.0.0"
-    CONTACT: dict = {
-        "name": "Ktechhub API",
-        "url": "https://www.ktechhub.com/",
-        "email": "info@ktechhub.com",
-    }
     LICENSE_INFO: dict = LICENSE_INFO
     OPENAPI_TAGS: list = OPENAPI_TAGS
     OPENAPI_SERVERS: list = OPENAPI_SERVERS

@@ -23,15 +23,24 @@ from app.core.loggers import app_logger as logger
 from app.api.v1.docs.router import docs_router
 from app.deps.docs import get_current_docs_user
 
-description_text = """
-Ktechhub API
+description_text = f"""
+{settings.APP_NAME} API - {settings.API_VERSION}
 """
-terms_of_service = "https://www.ktechhub.com/terms/"
+terms_of_service = f"https://{settings.DOMAIN}/terms/"
+
+
+contact: dict = {
+    "name": settings.APP_NAME,
+    "url": settings.APP_URL,
+    "email": settings.CONTACT_EMAIL,
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting the application")
+    logger.info(
+        f"Starting the application {settings.APP_NAME.upper()} {settings.API_VERSION}"
+    )
     scheduler = schedule_tasks()
     try:
         yield
@@ -40,10 +49,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Ktechhub API",
+    title=f"{settings.APP_NAME.upper()} API",
     description=description_text,
     version=settings.API_VERSION,
-    contact=settings.CONTACT,
+    contact=contact,
     terms_of_service=terms_of_service,
     license_info=settings.LICENSE_INFO,
     openapi_tags=settings.OPENAPI_TAGS,
@@ -144,14 +153,14 @@ app.include_router(docs_router, prefix="")
 )
 async def get_openapi_json(username: str = Depends(get_current_docs_user)):
     openapi_schema = get_openapi(
-        title="Ktechhub API",
+        title=f"{settings.APP_NAME.upper()} API",
         version=settings.API_VERSION,
         openapi_version="3.1.0",
         summary="Ktechhub - API",
         description=description_text,
         routes=app.routes,
         terms_of_service=terms_of_service,
-        contact=settings.CONTACT,
+        contact=contact,
         license_info=settings.LICENSE_INFO,  # Optional
         tags=settings.OPENAPI_TAGS,  # Optional list of dicts
         servers=settings.OPENAPI_SERVERS,  # Optional list of dicts
