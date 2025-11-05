@@ -167,15 +167,6 @@ class AuthRouter:
         data.email = data.email.lower()
         db_user = await self.crud.get(db=session, email=data.email)
         if db_user:
-            # await user_roles_crud.remove(
-            #     db=session,
-            #     user_uuid=db_user.uuid,
-            # )
-            # await verification_code_crud.remove(
-            #     db=session,
-            #     user_uuid=db_user.uuid,
-            # )
-            # await self.crud.remove(db=session, uuid=db_user.uuid)
             return conflict_response(f"{self.singular} with this email already exists.")
 
         # compare password
