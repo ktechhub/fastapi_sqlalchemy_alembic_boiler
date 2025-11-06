@@ -13,13 +13,14 @@ class S3URLMixin:
     """
 
     _s3_url_fields = []
+    _s3_url_expires_in = 3600 * 24 * 7
 
     def __getattribute__(self, name):
         # Get the original value
         value = super().__getattribute__(name)
 
         # Avoid recursion by checking if we're accessing the class or s3_url_fields
-        if name in ["__class__", "_s3_url_fields"]:
+        if name in ["__class__", "_s3_url_fields", "_s3_url_expires_in"]:
             return value
 
         # Get the s3_url_fields safely to avoid recursion
@@ -40,7 +41,7 @@ class S3URLMixin:
 
             try:
                 # Return presigned URL instead of original URL
-                return get_private_file_url(value)
+                return get_private_file_url(value, self._s3_url_expires_in)
             except Exception:
                 # If presigned URL generation fails, return original URL
                 return value
