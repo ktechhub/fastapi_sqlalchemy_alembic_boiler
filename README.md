@@ -16,6 +16,9 @@
   - [API Documentation](#api-documentation)
   - [Running Tests](#running-tests)
   - [Alembic Commands](#alembic-commands)
+  - [Database Initialization](#database-initialization)
+  - [Makefile Commands](#makefile-commands)
+  - [Environment Configuration](#environment-configuration)
   - [License](#license)
   - [Contributing](#contributing)
   - [Contact](#contact)
@@ -168,11 +171,13 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
 │       └── telegram.py
 ├── delayed_msgs.Dockerfile
 ├── delayed_msgs.py
-├── dev.docker-compose.yml
 ├── docker-compose.yml
+├── prod.docker-compose.yml
 ├── Dockerfile
+├── init_db.py
 ├── LICENSE
 ├── logs
+├── Makefile
 ├── README.md
 ├── redis_main.Dockerfile
 ├── requirements.txt
@@ -209,23 +214,39 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
    ```sh
    python alembic_cli.py upgrade
    ```
-6. **Start the application:**
+6. **Initialize database with default data:**
+   ```sh
+   python init_db.py
+   ```
+   This will create:
+   - Permissions
+   - Roles
+   - Role-permission associations
+   - Test users for each role
+   - Fake users for testing
+   - Countries data
+7. **Start the application:**
    ```sh
    uvicorn app.main:app --reload
    ```
-7. **Start the RedisMessageProcessor:**
+8. **Start the RedisMessageProcessor:**
    ```sh
    python -m app.services.redis_main
    ```
-8. **Start the DelayedMessageProcessor:**
+9. **Start the DelayedMessageProcessor:**
    ```sh
    python delayed_msgs.py
    ```
 
 ## Running with Docker
+
+### Basic Usage
 ```sh
 docker-compose up --build
 ```
+
+### Using Makefile (Recommended)
+The Makefile provides convenient commands for common operations. See [Makefile Commands](#makefile-commands) section below.
 
 ## API Documentation
 Once the application is running, the API docs can be accessed at:
@@ -239,22 +260,170 @@ pytest
 
 ## Alembic Commands
 
-1. Create a new migration:
+1. **Create a new migration:**
     ```bash
     python alembic_cli.py revision --message "description of change"
     ```
-2. Apply migrations:
+
+2. **Apply migrations:**
     ```bash
     python alembic_cli.py upgrade
     ```
-3. Revert migrations:
+    Or using Makefile (in Docker):
+    ```bash
+    make alembic-upgrade
+    ```
+
+3. **Revert migrations:**
     ```bash
     python alembic_cli.py downgrade base
     ```
-4. Check current migration:
+
+4. **Check current migration:**
     ```bash
     alembic current
     ```
+
+## Database Initialization
+
+After running database migrations, you need to populate the database with initial data (permissions, roles, test users, etc.).
+
+### Using init_db.py (Recommended)
+
+The `init_db.py` script runs all initialization tasks in the correct order:
+
+```bash
+# Direct execution
+python init_db.py
+
+# Or in Docker
+docker exec app python3 init_db.py
+
+# Or using Makefile
+make init-db
+```
+
+**What it does:**
+- Creates/updates permissions based on `default_actions`
+- Creates/updates roles based on `default_roles`
+- Syncs role-permission associations
+- Creates test users for each default role
+- Creates fake users for testing
+- Syncs countries data
+
+**Output:**
+- Progress indicators for each task
+- Success/failure summary
+- Telegram notification with results
+
+### Legacy Script
+
+The `test_users.py` script is kept for backward compatibility but is deprecated. Use `init_db.py` instead.
+
+## Makefile Commands
+
+The Makefile provides convenient commands for common operations. It automatically selects the correct docker-compose file based on the `ENV` variable in your `.env` file.
+
+### Environment-Based Configuration
+
+The Makefile automatically selects docker-compose files based on `ENV`:
+- `ENV=local` or `ENV=dev` → uses `docker-compose.yml`
+- `ENV=prod` (or any other value) → uses `prod.docker-compose.yml`
+
+### Available Commands
+
+#### Docker Compose Commands
+
+- **`make dc-up`** - Start containers in detached mode with build
+  ```bash
+  make dc-up
+  ```
+
+- **`make dc-up-with-logs`** - Start containers with logs visible
+  ```bash
+  make dc-up-with-logs
+  ```
+
+- **`make dc-down`** - Stop and remove containers
+  ```bash
+  make dc-down
+  ```
+
+#### Git Commands
+
+- **`make git-update`** - Update code from repository
+  - If `ENV=dev`: checks out `dev` branch and pulls from `origin dev`
+  - Otherwise: checks out `main` branch and pulls from `origin main`
+  ```bash
+  make git-update
+  ```
+
+#### Database Commands
+
+- **`make alembic-upgrade`** - Run database migrations
+  ```bash
+  make alembic-upgrade
+  ```
+
+- **`make init-db`** - Initialize database with default data
+  ```bash
+  make init-db
+  ```
+
+#### System Commands
+
+- **`make nginx-reload`** - Reload Nginx configuration
+  ```bash
+  make nginx-reload
+  ```
+
+#### Deployment Commands
+
+- **`make deploy`** - Full deployment workflow
+  - Updates code from git
+  - Stops containers
+  - Starts containers
+  - Waits for containers to start
+  - Runs database migrations
+  - Reloads Nginx
+  ```bash
+  make deploy
+  ```
+
+### Example Workflow
+
+```bash
+# 1. Set ENV in .env file
+echo "ENV=dev" >> .env
+
+# 2. Start containers
+make dc-up
+
+# 3. Run migrations
+make alembic-upgrade
+
+# 4. Initialize database
+make init-db
+
+# 5. For production deployment
+make deploy
+```
+
+## Environment Configuration
+
+The application uses environment variables from a `.env` file. Key variables include:
+
+- **`ENV`** - Environment name (`local`, `dev`, or `prod`)
+  - Affects which docker-compose file is used
+  - Affects which git branch is used for updates
+
+- **`DATABASE_URL`** - Database connection string
+- **`REDIS_URL`** - Redis connection string (optional)
+- **`SECRET_KEY`** - Secret key for JWT tokens
+- **`DOMAIN`** - Application domain
+- **`APP_NAME`** - Application name
+
+Create a `.env` file based on `.env.example` and configure these values.
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.

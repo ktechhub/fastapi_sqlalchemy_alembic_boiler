@@ -37,7 +37,7 @@ alembic-upgrade:
 	docker exec app python3 alembic_cli.py upgrade
 
 init-db:
-	docker exec app python test_users.py
+	docker exec app python3 init_db.py
 
 deploy:
 	make git-update
