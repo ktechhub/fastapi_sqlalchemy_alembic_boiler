@@ -18,6 +18,7 @@ load_dotenv(dotenv_path=".env")
 
 from app.core.config import settings
 from app.utils.telegram import send_telegram_msg
+from app.database.get_session import engine
 
 # Import all initialization tasks
 from app.tasks.common.permissions import create_or_update_permissions
@@ -121,21 +122,35 @@ async def run_initialization():
     )
     send_telegram_msg(msg=msg)
 
+    # Small delay to ensure all database operations complete
+    await asyncio.sleep(0.5)
+
+    # Properly dispose of the database engine before exiting
+    await engine.dispose()
+
+    # Additional small delay to allow engine disposal to complete
+    await asyncio.sleep(0.1)
+
     if failed:
-        exit(1)
+        return 1
     else:
-        exit(0)
+        return 0
+
+
+async def main():
+    """Main entry point with proper cleanup."""
+    try:
+        return await run_initialization()
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Initialization interrupted by user")
+        await engine.dispose()
+        return 1
+    except Exception as e:
+        print(f"\n\n❌ Fatal error: {e}")
+        await engine.dispose()
+        return 1
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run_initialization())
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Initialization interrupted by user")
-        exit(1)
-    except Exception as e:
-        print(f"\n\n❌ Fatal error: {e}")
-        exit(1)
-    finally:
-        loop.close()
+    exit_code = asyncio.run(main())
+    exit(exit_code)
