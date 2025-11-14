@@ -7,6 +7,7 @@ from app.models.role_permissions import RolePermission
 from app.models.user_roles import UserRole
 from app.models.activity_logs import ActivityLog
 from app.models.countries import Country
+from app.models.user_sessions import UserSession
 
 
 MODEL_CLASSES = {
@@ -18,6 +19,7 @@ MODEL_CLASSES = {
     "UserRole": UserRole,
     "ActivityLog": ActivityLog,
     "Country": Country,
+    "UserSession": UserSession,
 }
 
 

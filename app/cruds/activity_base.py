@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Optional, Type, TypeVar, Union, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from .activity_logs import activity_log_crud
 from .base import CRUDBase
 from ..core.loggers import app_logger as logger
 from ..core.config import settings
+from app.services.redis_push import redis_push_async
 
 ModelType = TypeVar("ModelType")
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
@@ -44,17 +46,31 @@ class ActivityCRUDBase(CRUDBase[ModelType, CreateSchemaType, UpdateSchemaType]):
         if user_uuid is None:
             logger.warning(f"User UUID is None for {self.singular}")
             return
-        await activity_log_crud.create(
-            db=db,
-            obj_in=ActivityLogCreateSchema(
+            # await activity_log_crud.create(
+            #     db=db,
+            #     obj_in=ActivityLogCreateSchema(
+            #         user_uuid=user_uuid,
+            #         entity=self.singular,
+            #         action=action,
+            #         previous_data=previous_data or {},
+            #         new_data=new_data or {},
+            #         description=description,
+            #     ),
+            # )
+        message = {
+            "queue_name": "activity_logs",
+            "operation": "create",
+            "log": False,
+            "data": ActivityLogCreateSchema(
                 user_uuid=user_uuid,
                 entity=self.singular,
                 action=action,
                 previous_data=previous_data or {},
                 new_data=new_data or {},
                 description=description,
-            ),
-        )
+            ).model_dump(),
+        }
+        await redis_push_async(message=message, log=False)
 
     async def create(
         self,

@@ -26,6 +26,7 @@ from ..utils.responses import (
 )
 from ..services.redis_base import client as redis_client
 from ..core.loggers import app_logger as logger
+from ..utils.security_util import is_token_valid
 
 reuseable_oauth = OAuth2PasswordBearer(
     tokenUrl="/api/v1/login/",
@@ -53,15 +54,18 @@ async def get_current_user(
     token: str = Depends(reuseable_oauth), session: Session = Depends(get_async_session)
 ):
     try:
-        # Decode JWT
+        # Decode JWT (validates expiration automatically)
         payload = jwt.decode(
             token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         token_data = TokenPayloadSchema(**payload)
 
-        # Check if token is expired
-        if datetime.fromtimestamp(token_data.exp) < datetime.now():
-            return forbidden_response("Token expired")
+        # Check if token was revoked (pass payload to avoid double decode)
+        if not is_token_valid(
+            token, token_data.sub, token_type="access", payload=payload
+        ):
+            logger.warning(f"Attempted to use revoked token for user {token_data.sub}")
+            return not_authorized_response("Token has been revoked")
 
         cached_user = redis_client.get(f"token:{token}")
         if cached_user:

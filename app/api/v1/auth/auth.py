@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import urllib.parse
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,11 +214,9 @@ class AuthRouter:
             return bad_request_response(
                 f"Oops... Something went wrong. {self.singular} could not be created."
             )
-        stmt = (
-            select(User).options(joinedload(User.roles)).where(User.uuid == user.uuid)
+        db_user: User = await self.crud.get(
+            db=session, uuid=user.uuid, include_relations="roles"
         )
-
-        db_user: User = await self.crud.get(db=session, statement=stmt)
         await activity_log_crud.create(
             db=session,
             obj_in=ActivityLogCreateSchema(
@@ -232,8 +230,7 @@ class AuthRouter:
         )
 
         return created_response(
-            "Please confirm your signup, check your email for the verification code.",
-            data=None,
+            message="Please confirm your signup, check your email for the verification code."
         )
 
     async def confirm_register(
@@ -242,12 +239,6 @@ class AuthRouter:
         data: UserConfirmEmailSchema,
         session: AsyncSession = Depends(get_async_session),
     ):
-        stmt = (
-            select(User)
-            .options(joinedload(User.roles))
-            .where(User.email == data.email.lower())
-        )
-
         db_user = await self.crud.get(
             db=session, email=data.email.lower(), include_relations="roles"
         )
@@ -377,19 +368,15 @@ class AuthRouter:
     async def login(
         self,
         data: OAuth2PasswordRequestForm = Depends(),
-        session: AsyncSession = Depends(get_async_session),
+        request: Request = None,
+        db: AsyncSession = Depends(get_async_session),
     ):
         """
         User Login.
         """
-        # company, admin = email
-        # user, agents = phone, email
-        stmt = (
-            select(User)
-            .options(joinedload(User.roles))
-            .where(User.email == data.username.lower())
+        db_user: User = await self.crud.get(
+            db=db, email=data.username.lower(), include_relations="roles,country"
         )
-        db_user: User = await self.crud.get(db=session, statement=stmt)
         if not db_user:
             logger.error(f"User {data.username} not found.")
             return bad_request_response("Incorrect email or password")
@@ -404,10 +391,37 @@ class AuthRouter:
             return bad_request_response("User is not verified")
 
         logger.info(f"User {db_user.email} logged in successfully.")
+        await self.crud.update(
+            db=db,
+            db_obj=db_user,
+            obj_in=UserUpdateSchema(last_login=datetime.now(tz=timezone.utc)),
+            user_uuid=db_user.uuid,
+        )
+
+        # Create tokens with same jti for session tracking
+        access_token, access_jti = create_access_token(str(db_user.uuid))
+        refresh_token, refresh_jti = create_refresh_token(
+            str(db_user.uuid), jti=access_jti
+        )
+
+        # Create user session
+        try:
+            from app.services.session_service import create_user_session
+
+            if request:
+                await create_user_session(
+                    db=db,
+                    user_uuid=str(db_user.uuid),
+                    token_jti=access_jti,
+                    request=request,
+                )
+        except Exception as e:
+            logger.error(f"Error creating session: {e}")
+
         await activity_log_crud.create(
-            db=session,
+            db=db,
             obj_in=ActivityLogCreateSchema(
-                user_uuid=None,
+                user_uuid=db_user.uuid,
                 entity=self.singular,
                 action="login",
                 previous_data=db_user.to_dict(),
@@ -418,9 +432,9 @@ class AuthRouter:
         return {
             "status": status.HTTP_200_OK,
             "detail": "Login success!",
-            "access_token": create_access_token(str(db_user.uuid)),
-            "refresh_token": create_refresh_token(str(db_user.uuid)),
-            "data": db_user.to_dict(),
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "data": db_user,
         }
 
     async def create_password(
@@ -469,12 +483,9 @@ class AuthRouter:
         """
         Initialize user account.
         """
-        stmt = (
-            select(User)
-            .options(joinedload(User.roles))
-            .where(User.email == data.email.lower())
+        db_user = await self.crud.get(
+            db=session, email=data.email.lower(), include_relations="roles"
         )
-        db_user = await self.crud.get(db=session, statement=stmt)
         if not db_user:
             logger.error(f"User {data.email} not found. - initializing account.")
             return not_found_response("User not found.")
@@ -546,20 +557,6 @@ class AuthRouter:
             )
         except Exception as e:
             logger.error(f"Error sending email: {e}")
-            send_telegram_msg(
-                f"{verification_code.code}:: Error sending email: {e}"
-            )  # TODO: Remove this line later
-        await activity_log_crud.create(
-            db=session,
-            obj_in=ActivityLogCreateSchema(
-                user_uuid=None,
-                entity="verification codes",
-                action="create",
-                previous_data={},
-                new_data=verification_code.to_dict(),
-                description=f"Password reset code sent successfully for user {db_user.email}.",
-            ),
-        )
         return success_response(
             "Password reset code sent successfully.",
         )

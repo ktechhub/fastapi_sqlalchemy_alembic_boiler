@@ -15,13 +15,18 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=".env")
 
 from pywebguard import FastAPIGuard
-from app.core.webguard import pyguard_config, async_redis_storage, route_rate_limits
+from app.middlewares.webguard import (
+    pyguard_config,
+    async_redis_storage,
+    route_rate_limits,
+)
 from app.core.config import settings
 from app.api.v1.router import router
 from app.tasks.scheduler import schedule_tasks
 from app.core.loggers import app_logger as logger
 from app.api.v1.docs.router import docs_router
 from app.deps.docs import get_current_docs_user
+from app.middlewares.session_tracking import SessionTrackingMiddleware
 
 terms_of_service = f"https://{settings.DOMAIN}/terms"
 description_text = f"""
@@ -110,6 +115,8 @@ app.add_middleware(
     storage=async_redis_storage,
     route_rate_limits=route_rate_limits,
 )
+
+app.add_middleware(SessionTrackingMiddleware)
 
 
 if settings.SENTRY_DSN != "":

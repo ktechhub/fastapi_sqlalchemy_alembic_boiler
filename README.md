@@ -194,8 +194,8 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
 ### Setup
 1. **Clone the repository:**
    ```sh
-   git clone git@github.com:ktechhub/fastapi_sqlalchemy_alembic_boiler.git
-   cd fastapi_sqlalchemy_alembic_boiler
+   git clone https://github.com/ktechhub/fastapi_sqlalchemy_alembic_boiler.git your_project
+   cd your_project
    ```
 2. **Create and activate a virtual environment:**
    ```sh
@@ -221,10 +221,10 @@ The **API** is a FastAPI-based authentication and authorization service. It prov
    This will create:
    - Permissions
    - Roles
+   - Countries data
    - Role-permission associations
    - Test users for each role
    - Fake users for testing
-   - Countries data
 7. **Start the application:**
    ```sh
    uvicorn app.main:app --reload
@@ -276,7 +276,7 @@ pytest
 
 3. **Revert migrations:**
     ```bash
-    python alembic_cli.py downgrade base
+    python alembic_cli.py downgrade --revision <revision-id>
     ```
 
 4. **Check current migration:**

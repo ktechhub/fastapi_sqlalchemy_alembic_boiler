@@ -13,12 +13,14 @@ if TYPE_CHECKING:
     from .roles import Role
     from .activity_logs import ActivityLog
     from .countries import Country
+    from .user_sessions import UserSession
 else:
     VerificationCode = "VerificationCode"
     UserRole = "UserRole"
     Role = "Role"
     ActivityLog = "ActivityLog"
     Country = "Country"
+    UserSession = "UserSession"
 
 
 class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
@@ -45,6 +47,9 @@ class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
         DateTime(timezone=True), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_login: Mapped[Optional[DateTime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     verification_codes: Mapped["VerificationCode"] = relationship(
         "VerificationCode", back_populates="user"
@@ -62,6 +67,9 @@ class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
     )
     activity_logs: Mapped[list["ActivityLog"]] = relationship(
         "ActivityLog", back_populates="user"
+    )
+    user_sessions: Mapped[list["UserSession"]] = relationship(
+        "UserSession", back_populates="user"
     )
     country_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("countries.id"), nullable=True

@@ -4,6 +4,10 @@ import signal
 import sys
 import redis
 from typing import Optional, List
+from dotenv import load_dotenv
+import meilisearch
+
+load_dotenv()
 
 from .redis_base import client
 from .redis_operations import perform_operation
@@ -13,6 +17,13 @@ from app.core.config import settings
 from app.core.loggers import redis_logger as logger
 from app.mails.email_service import email_service
 from app.utils.telegram import send_telegram_msg
+from app.database.get_session import AsyncSessionLocal
+from app.services.session_service import (
+    process_session_creation,
+    process_session_update,
+)
+from app.cruds.activity_logs import activity_log_crud
+from app.schemas.activity_logs import ActivityLogCreateSchema
 
 
 class RedisMessageProcessor:
@@ -75,6 +86,39 @@ class RedisMessageProcessor:
                     return False
                 return True
 
+            elif queue_name == "sessions":
+                operation = message.get("operation", "create")
+                try:
+                    if operation == "create":
+                        await process_session_creation(message["data"])
+                    elif operation == "update":
+                        await process_session_update(message["data"])
+                    else:
+                        logger.error(f"Invalid session operation: {operation}")
+                        await process_poison_queue(queue_name, message)
+                        return False
+                except Exception as e:
+                    logger.error(f"Failed to process session queue: {e}")
+                    await process_poison_queue(queue_name, message)
+                    return False
+                return True
+
+            elif queue_name == "activity_logs":
+                operation = message.get("operation", "create")
+                data = message.get("data", {})
+                try:
+                    if operation == "create":
+                        async with AsyncSessionLocal() as db:
+                            await activity_log_crud.create(
+                                db=db, obj_in=ActivityLogCreateSchema(**data)
+                            )
+                            logger.info(f"Activity log created successfully.")
+                except Exception as e:
+                    logger.error(f"Failed to create activity log: {e}")
+                    await process_poison_queue(queue_name, message)
+                    return False
+                return True
+
             # Handle data operations
             if isinstance(message["data"], list):
                 new_message = message.copy()
@@ -121,8 +165,10 @@ class RedisMessageProcessor:
                 _, json_message = result
                 message = json.loads(json_message)
                 queue_name = message["queue_name"]
+                log_message = message.get("log", True)
 
-                logger.info(f"Processing message from {queue_name}: {message}")
+                if log_message:
+                    logger.info(f"Processing message from {queue_name}: {message}")
                 await self.process_message(message, queue_name)
 
             except redis.ConnectionError as e:

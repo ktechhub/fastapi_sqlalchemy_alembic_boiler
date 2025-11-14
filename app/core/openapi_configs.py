@@ -63,4 +63,12 @@ OPENAPI_TAGS = [
         "name": "Activity Logs",
         "description": "Activity logs endpoints.",
     },
+    {
+        "name": "Sessions",
+        "description": "Sessions endpoints.",
+    },
+    {
+        "name": "Generals",
+        "description": "Generals endpoints.",
+    },
 ]

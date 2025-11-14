@@ -128,6 +128,7 @@ class UserUpdateSchema(UserBaseSchema):
     avatar: Optional[str] = None
     status: Optional[str] = None
     country_id: Optional[int] = None
+    last_login: Optional[datetime] = None
 
 
 class UserUpdateWithPasswordSchema(UserBaseSchema):
@@ -145,6 +146,7 @@ class UserUpdateWithPasswordSchema(UserBaseSchema):
     password: Optional[str] = None
     status: Optional[str] = None
     country_id: Optional[int] = None
+    last_login: Optional[datetime] = None
 
 
 class AdminUpdateUserSchema(BaseModel):

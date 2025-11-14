@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from collections import defaultdict
 
 from .redis_base import client, get_async_redis_client
-from ..core.loggers import redis_logger as logger
+from app.core.loggers import redis_logger as logger
 
 # Batch configuration
 BATCH_SIZE = 50  # Number of messages to batch
@@ -47,7 +47,9 @@ def redis_lpush(message: dict, delay_seconds: int = 0) -> None:
         logger.info(f"Pushed {message} to {queue_name}.")
 
 
-async def redis_push_async(message: dict, delay_seconds: int = 0) -> None:
+async def redis_push_async(
+    message: dict, delay_seconds: int = 0, log: bool = True
+) -> None:
     """
     Push a message to a list in Redis.
 
@@ -67,12 +69,14 @@ async def redis_push_async(message: dict, delay_seconds: int = 0) -> None:
         await async_client.zadd(
             f"{queue_name}-delayed", {json.dumps(message): delay_timestamp}
         )
-        logger.info(
-            f"Pushed {message} to {queue_name} with delay of {delay_seconds} seconds"
-        )
+        if log:
+            logger.info(
+                f"Pushed {message} to {queue_name} with delay of {delay_seconds} seconds"
+            )
     else:
         await async_client.lpush(queue_name, json.dumps(message))
-        logger.info(f"Pushed {message} to {queue_name}.")
+        if log:
+            logger.info(f"Pushed {message} to {queue_name}.")
 
 
 # New async methods with batching and connection pooling
