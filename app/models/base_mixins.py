@@ -57,7 +57,9 @@ class BaseModelMixin:
 
 
 class SlugBaseModelMixin(BaseModelMixin):
-    slug: Mapped[str] = mapped_column(String, index=True, unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(
+        String(255), index=True, unique=True, nullable=False
+    )
 
 
 class BaseIDModelMixin(BaseModelMixin):

@@ -26,7 +26,6 @@ class LogBaseSchema(BaseModel):
             "logs",
             "analytics",
             "messaging_layer",
-            "ktechhub",
         ]
     ] = Field(None, description="The service that generated the log")
     logger_name: Optional[

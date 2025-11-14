@@ -75,10 +75,10 @@ def get_basic_template(title, subject, salutation, message):
       <p>{salutation}</p>
       {message}<br>
       <p>Regards,</p>
-      <p>Ktechhub Team</p>
+      <p>{settings.APP_NAME.upper()} Team</p>
     </div>
     <div class="footer">
-      <img src="{settings.FRONTEND_URL}/assets/logo.13616b6b.png" alt="Ktechhub Logo">
+      <img src="{logo_url}" alt="{settings.APP_NAME} Logo">
       <p>&copy; 2025 {settings.DOMAIN}. All rights reserved.</p>
     </div>
   </div>

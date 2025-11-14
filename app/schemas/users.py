@@ -11,6 +11,7 @@ from ..core.constants import DISPOSABLE_EMAIL_DOMAINS
 from .base_filters import BaseFilters
 from .validate_uuid import UUIDStr
 from app.utils.responses import bad_request_response
+from .countries import CountrySchema
 
 PasswordStr = Annotated[str, constr(min_length=8)]
 PhoneStr = Annotated[str, constr(min_length=10, max_length=15)]
@@ -23,10 +24,9 @@ class UserBaseSchema(BaseModel):
     first_name: str
     last_name: str
     phone_number: Optional[PhoneStr] = None
-    national_id: Optional[NationalIDStr] = None
     address: Optional[str] = Field(None, max_length=255)
-    digital_address: Optional[str] = Field(None, max_length=20)
     gender: Optional[GenderType] = Field("other", max_length=10)
+    country_id: Optional[int] = None
 
 
 class EmailValidationSchema(BaseModel):
@@ -61,10 +61,8 @@ default_export_columns = [
     "last_name",
     "email",
     "phone_number",
-    "national_id",
     "gender",
     "address",
-    "digital_address",
     "date_of_birth",
 ]
 
@@ -126,11 +124,10 @@ class UserUpdateSchema(UserBaseSchema):
     phone_number: Optional[PhoneStr] = None
     gender: Optional[str] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
-    national_id: Optional[str] = None
     status: Optional[str] = None
+    country_id: Optional[int] = None
 
 
 class UserUpdateWithPasswordSchema(UserBaseSchema):
@@ -143,12 +140,11 @@ class UserUpdateWithPasswordSchema(UserBaseSchema):
     phone_number: Optional[PhoneStr] = None
     gender: Optional[str] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
-    national_id: Optional[str] = None
     password: Optional[str] = None
     status: Optional[str] = None
+    country_id: Optional[int] = None
 
 
 class AdminUpdateUserSchema(BaseModel):
@@ -157,15 +153,14 @@ class AdminUpdateUserSchema(BaseModel):
     phone_number: Optional[PhoneStr] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
-    national_id: Optional[str] = None
     role_uuid: UUIDStr = Field(
         None,
         description="Comma separated list of role uuids",
         examples=["d6fbbd0a-fbb5-4e67-93c1-4323e30a817f"],
     )
+    country_id: Optional[int] = None
 
 
 class AdminUpdateFieldOfficerSchema(BaseModel):
@@ -174,12 +169,11 @@ class AdminUpdateFieldOfficerSchema(BaseModel):
     phone_number: Optional[PhoneStr] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
-    national_id: Optional[str] = None
     is_active: Optional[bool] = None
     status: Optional[str] = None
+    country_id: Optional[int] = None
 
 
 class UserUpdatePasswordSchema(BaseModel):
@@ -201,9 +195,9 @@ class UserInitializeSchema(BaseModel):
     last_name: str
     email: EmailStr
     password: str
-    national_id: str
     phone_number: Optional[PhoneStr] = None
     date_of_birth: Optional[date] = None
+    country_id: Optional[int] = None
 
     @field_validator("password")
     def validate_password_complexity(cls, value):
@@ -252,9 +246,8 @@ class UserUpdateProfileSchema(BaseModel):
     phone_number: Optional[PhoneStr] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
-    national_id: Optional[str] = None
+    country_id: Optional[int] = None
 
 
 class UserRoleSchema(BaseUUIDSchema):
@@ -286,10 +279,11 @@ class UserWithoutRoutesSchema(UserUpdateSchema, BaseUUIDSchema):
     phone_number: Optional[str] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
+    country_id: Optional[int] = None
     roles: Optional[List[UserRoleWithoutRoutesSchema]] = None
+    country: Optional[CountrySchema] = None
 
 
 class UserSchema(UserUpdateSchema, BaseUUIDSchema):
@@ -299,10 +293,11 @@ class UserSchema(UserUpdateSchema, BaseUUIDSchema):
     phone_number: Optional[str] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
+    country_id: Optional[int] = None
     roles: Optional[List[UserRoleSchema]] = None
+    country: Optional[CountrySchema] = None
 
 
 class UserResponseSchema(BaseResponseSchema):
@@ -337,9 +332,7 @@ class UserFilters(BaseFilters):
     phone_number: Optional[str] = None
     gender: Optional[GenderType] = None
     address: Optional[str] = None
-    digital_address: Optional[str] = None
     date_of_birth: Optional[date] = None
-    national_id: Optional[str] = None
     status: Optional[str] = None
     user_type: Optional[str] = None
     exclude_user_types: Optional[str] = None
@@ -354,3 +347,4 @@ class UserFilters(BaseFilters):
         description="A comma-separated list of related models to include in the result set (e.g., 'permissions,users')",
         example="roles",
     )
+    country_id: Optional[int] = None

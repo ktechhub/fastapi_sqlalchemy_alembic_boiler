@@ -71,7 +71,6 @@ async def create_fake_users() -> None:
                             is_active=True,
                             is_verified=True,
                             verified_at=datetime.now(tz=timezone.utc),
-                            national_id=national_id,
                             avatar=fake.image_url(),  # Or set to an empty string if needed
                         ),
                     )
@@ -90,7 +89,6 @@ async def create_fake_users() -> None:
                             "email": user.email,
                             "role": role.name,
                             "city": city,
-                            "national_id": national_id,
                         }
                     )
                 except Exception as e:

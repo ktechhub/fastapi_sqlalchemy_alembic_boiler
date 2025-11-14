@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     DOMAIN: str = "ktechhub.com"
     FRONTEND_URL: str = "https://dev.ktechhub.com"
     BASE_API_URL: str = "https://api.ktechhub.com"
+    DEFAULT_PASSWORD: str = "KtechHub@2025"
 
     ALLOWED_HOSTS: str = "*"
 

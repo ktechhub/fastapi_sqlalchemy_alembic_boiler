@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from app.core.config import settings
 from app.cruds.permissions import permission_crud
 from app.schemas.permissions import (
     PermissionCreateSchema,
@@ -62,7 +63,7 @@ async def create_or_update_permissions():
                 updated_count += 1
             scheduler_logger.info(f"Permission {permission['name']} synced!")
         msg = (
-            f"*ktechhub::Permissions Sync Report*\n\n"
+            f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Permissions Sync Report*\n\n"
             f"✅ Items Created: {created_count}\n"
             f"✅ Items Updated: {updated_count}\n"
             f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"

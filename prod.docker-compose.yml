@@ -1,5 +1,26 @@
 version: '3'
 services:
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    restart: always
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # healthcheck:
+    #   test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 30s
+
   redis:
     image: redis:latest
     restart: always
@@ -20,6 +41,9 @@ services:
     restart: always
     volumes:
       - .:/app
+    depends_on:
+      - redis
+      - mysql
     env_file:
       - ./.env
   
@@ -50,6 +74,20 @@ services:
       - redis
     env_file:
       - ./.env
+  
+  redis_consumer3:
+    build:
+      context: .
+      dockerfile: redis_main.Dockerfile
+    command: python3 -m app.services.redis_main
+    container_name: redis_consumer3
+    restart: always
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    env_file:
+      - ./.env
 
   redis_service_delayed_msgs:
     build:
@@ -64,5 +102,5 @@ services:
       - ./.env
 
 volumes:
-  db_data:
+  mysql_data:
   redis_data:

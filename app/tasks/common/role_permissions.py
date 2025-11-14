@@ -72,7 +72,7 @@ async def sync_role_permissions():
             f"Sync complete: {created_count} role-permissions created, {updated_count} updated."
         )
     msg = (
-        f"*ktechhub::Role Permissions Sync Report*\n\n"
+        f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Role Permissions Sync Report*\n\n"
         f"✅ Items Created: {created_count}\n"
         f"✅ Items Updated: {updated_count}\n"
         f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"

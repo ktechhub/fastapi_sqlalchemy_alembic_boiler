@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from app.core.config import settings
 from app.cruds.roles import role_crud
 from app.schemas.roles import RoleCreateSchema, RoleUpdateSchema
 from app.utils.telegram import send_telegram_msg
@@ -21,7 +22,7 @@ async def create_or_update_roles():
                 )
                 updated_count += 1
         msg = (
-            f"*ktechhub::Roles Sync Report*\n\n"
+            f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Roles Sync Report*\n\n"
             f"✅ Items Created: {created_count}\n"
             f"✅ Items Updated: {updated_count}\n"
             f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"

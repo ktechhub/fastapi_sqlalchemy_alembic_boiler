@@ -106,7 +106,6 @@ class UserSchema(BaseSchema, BaseUUIDSchema):
     address: Optional[str] = None
     date_of_birth: Optional[date] = None
     avatar: Optional[str] = None
-    national_id: Optional[str] = None
     status: Optional[str] = None
 
 

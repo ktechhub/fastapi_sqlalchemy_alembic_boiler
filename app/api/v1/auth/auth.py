@@ -248,7 +248,9 @@ class AuthRouter:
             .where(User.email == data.email.lower())
         )
 
-        db_user = await self.crud.get(db=session, statement=stmt)
+        db_user = await self.crud.get(
+            db=session, email=data.email.lower(), include_relations="roles"
+        )
         if not db_user:
             return not_found_response("User not found.")
 
@@ -381,7 +383,7 @@ class AuthRouter:
         User Login.
         """
         # company, admin = email
-        # user, agents = phone, email, national_id
+        # user, agents = phone, email
         stmt = (
             select(User)
             .options(joinedload(User.roles))
@@ -492,7 +494,6 @@ class AuthRouter:
                 verified_at=datetime.now(tz=timezone.utc),
                 first_name=data.first_name,
                 last_name=data.last_name,
-                national_id=data.national_id,
                 phone_number=data.phone_number,
             ),
             user_uuid=db_user.uuid,

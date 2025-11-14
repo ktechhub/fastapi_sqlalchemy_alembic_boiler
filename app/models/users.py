@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 from datetime import date
-from sqlalchemy import Boolean, DateTime, String, Date, Text
+from sqlalchemy import Boolean, DateTime, String, Date, Text, BigInteger, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database.base_class import Base
@@ -12,11 +12,13 @@ if TYPE_CHECKING:
     from .user_roles import UserRole
     from .roles import Role
     from .activity_logs import ActivityLog
+    from .countries import Country
 else:
     VerificationCode = "VerificationCode"
     UserRole = "UserRole"
     Role = "Role"
     ActivityLog = "ActivityLog"
+    Country = "Country"
 
 
 class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
@@ -36,8 +38,6 @@ class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
     address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     avatar: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    national_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    digital_address: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -62,6 +62,12 @@ class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
     )
     activity_logs: Mapped[list["ActivityLog"]] = relationship(
         "ActivityLog", back_populates="user"
+    )
+    country_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("countries.id"), nullable=True
+    )
+    country: Mapped["Country"] = relationship(
+        "Country", back_populates="users", viewonly=True
     )
 
     def to_schema_dict(self) -> dict:

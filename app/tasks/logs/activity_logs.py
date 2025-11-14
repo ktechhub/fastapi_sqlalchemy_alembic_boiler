@@ -3,6 +3,7 @@ from app.cruds.activity_logs import activity_log_crud
 from app.models.activity_logs import ActivityLog
 from app.utils.telegram import send_telegram_msg
 from app.database.get_session import AsyncSessionLocal
+from app.core.config import settings
 
 
 async def delete_activity_logs():
@@ -23,7 +24,7 @@ async def delete_activity_logs():
                 db=db, uuid=[item.uuid for item in activity_logs["data"]]
             )
         msg = (
-            f"*ktechhub::Activity Logs Deletion Report*\n\n"
+            f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Activity Logs Deletion Report*\n\n"
             f"✅ Items Deleted: {deleted_count}\n"
             f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
         )

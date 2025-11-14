@@ -86,7 +86,7 @@ async def create_test_users() -> None:
                         first_name=role_data["label"],
                         last_name=last_name,
                         email=f"{role_data['name'].lower()}@{settings.DOMAIN}",
-                        password=hash_password("KtechHub2025"),
+                        password=hash_password(settings.DEFAULT_PASSWORD),
                         phone_number=ghana_phone_number(),
                         address=location,
                         date_of_birth=fake.date_of_birth(
@@ -96,7 +96,6 @@ async def create_test_users() -> None:
                         is_active=True,
                         is_verified=True,
                         verified_at=datetime.now(tz=timezone.utc),
-                        national_id=national_id,
                         avatar=fake.image_url(),
                     ),
                 )
@@ -125,7 +124,7 @@ async def create_test_users() -> None:
                     obj_in=UserUpdateWithPasswordSchema(
                         first_name=role_data["label"],
                         last_name=last_name,
-                        password=hash_password("KtechHub2025"),
+                        password=hash_password(settings.DEFAULT_PASSWORD),
                     ),
                 )
                 users.append(
@@ -138,7 +137,7 @@ async def create_test_users() -> None:
                 )
         print("users", users)
         msg = (
-            f"*ktechhub::Users Sync Report*\n\n"
+            f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Users Sync Report*\n\n"
             f"✅ Users Created: {len(users)}\n"
             f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
         )
