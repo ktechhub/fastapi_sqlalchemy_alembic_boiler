@@ -4,15 +4,15 @@ Optimized for performance: Redis-only operations, minimal DB access.
 """
 
 import json
-import jwt
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
+import jwt
 
 from app.core.config import settings
 from app.core.loggers import app_logger as logger
 from app.services.redis_base import client as redis_client
 from app.services.redis_push import redis_push_async
-from app.utils.security_util import is_token_valid
+from app.utils.security_util import is_token_valid, decode_token_lightweight
 
 
 # Paths to exclude from session tracking
@@ -56,12 +56,7 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
         try:
             # Lightweight decode (only get jti, skip full validation)
             # Full validation happens in get_current_user dependency
-            payload = jwt.decode(
-                token,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
-                options={"verify_signature": True, "verify_exp": False},
-            )
+            payload = decode_token_lightweight(token)
             token_jti = payload.get("jti")
             user_uuid = payload.get("sub")
 

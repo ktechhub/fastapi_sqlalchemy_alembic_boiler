@@ -7,6 +7,7 @@ from typing import Dict, Optional
 from fastapi import Request
 from user_agents import parse as parse_user_agent
 import httpx
+import json
 from ..core.config import settings
 from ..services.redis_base import client as redis_client
 from ..core.loggers import app_logger as logger
@@ -150,7 +151,6 @@ async def get_location_from_ip(ip: str) -> Dict[str, Optional[str]]:
                     }
 
                     # Cache for 24 hours
-                    import json
 
                     redis_client.setex(cache_key, 86400, json.dumps(location_data))
     except Exception as e:

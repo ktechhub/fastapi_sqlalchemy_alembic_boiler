@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, UploadFile, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose import jwt
+import jwt
 from app.deps.user import get_current_user, reuseable_oauth
 from app.models.users import User
 from app.core.config import settings
@@ -11,7 +11,10 @@ from app.utils.security_util import (
     create_access_token_from_refresh_token,
     invalidate_user_tokens,
     is_token_valid,
+    decode_access_token,
+    decode_refresh_token,
 )
+from app.utils.encryption_util import hash_token
 from app.cruds.users import user_crud
 from app.cruds.activity_logs import activity_log_crud
 from app.schemas.users import (
@@ -218,12 +221,8 @@ class UserProfileRouter:
         logger.info("Generating access token from refresh token")
 
         try:
-            # Decode refresh token (validates expiration automatically)
-            payload = jwt.decode(
-                refresh_token,
-                settings.JWT_REFRESH_SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
-            )
+            # Decode refresh token (validates expiration, nbf, issuer, audience)
+            payload = decode_refresh_token(refresh_token)
             user_uuid = payload.get("sub")
 
             # Check if token was revoked (pass payload to avoid double decode)
@@ -262,12 +261,7 @@ class UserProfileRouter:
 
         try:
             # Get token jti to find and close session
-            from jose import jwt
-            from app.core.config import settings
-
-            payload = jwt.decode(
-                token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM]
-            )
+            payload = decode_access_token(token)
             token_jti = payload.get("jti")
 
             # Close session if found
@@ -282,7 +276,9 @@ class UserProfileRouter:
                     await close_user_session(session, str(user_session.uuid))
 
             invalidate_user_tokens(str(user.uuid))
-            redis_client.delete(f"token:{token}")  # Cleanup cache
+            # Cleanup cache using hashed token key
+            token_hash = hash_token(token)
+            redis_client.delete(f"token:{token_hash}")
 
             # Get user data for activity log (if needed)
             db_user = await self.crud.get(

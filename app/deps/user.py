@@ -1,7 +1,7 @@
 import json, redis
 from typing import Callable
 from datetime import datetime
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,8 @@ from ..utils.responses import (
 )
 from ..services.redis_base import client as redis_client
 from ..core.loggers import app_logger as logger
-from ..utils.security_util import is_token_valid
+from ..utils.security_util import is_token_valid, decode_access_token
+from ..utils.encryption_util import hash_token, encrypt_data, decrypt_data
 
 reuseable_oauth = OAuth2PasswordBearer(
     tokenUrl="/api/v1/login/",
@@ -54,10 +55,8 @@ async def get_current_user(
     token: str = Depends(reuseable_oauth), session: Session = Depends(get_async_session)
 ):
     try:
-        # Decode JWT (validates expiration automatically)
-        payload = jwt.decode(
-            token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM]
-        )
+        # Decode JWT (validates expiration, nbf, issuer, and audience)
+        payload = decode_access_token(token)
         token_data = TokenPayloadSchema(**payload)
 
         # Check if token was revoked (pass payload to avoid double decode)
@@ -67,10 +66,20 @@ async def get_current_user(
             logger.warning(f"Attempted to use revoked token for user {token_data.sub}")
             return not_authorized_response("Token has been revoked")
 
-        cached_user = redis_client.get(f"token:{token}")
+        # Use hashed token as Redis key to prevent token exposure
+        token_hash = hash_token(token)
+        cached_user = redis_client.get(f"token:{token_hash}")
         if cached_user:
-            user_info = json.loads(cached_user)
-            return UserDepSchema(**user_info)
+            # Decrypt cached user data
+            try:
+                decrypted_data = decrypt_data(cached_user)
+                user_info = json.loads(decrypted_data)
+                return UserDepSchema(**user_info)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to decrypt cached user data: {e}, fetching from DB"
+                )
+                # If decryption fails, continue to fetch from DB
 
         user = await user_crud.get(
             db=session, uuid=token_data.sub, eager_load=[User.roles]
@@ -88,8 +97,13 @@ async def get_current_user(
         expires_in = payload["exp"] - int(datetime.now().timestamp())  # Remaining time
         # Use 60 minutes (60*60 seconds) as default expiry, unless expires_in is less
         expiry_time = min(3600, expires_in) if expires_in > 0 else 3600
-        redis_client.setex(f"token:{token}", expiry_time, user_data.model_dump_json())
+        # Encrypt user data and use hashed token as key to prevent token exposure
+        encrypted_data = encrypt_data(user_data.model_dump_json())
+        redis_client.setex(f"token:{token_hash}", expiry_time, encrypted_data)
         return user_data
+    except HTTPException:
+        # Re-raise HTTPException (from not_authorized_response, etc.) to preserve status code
+        raise
     except ValidationError:
         return not_authorized_response("Could not validate credentials")
     except jwt.ExpiredSignatureError:
