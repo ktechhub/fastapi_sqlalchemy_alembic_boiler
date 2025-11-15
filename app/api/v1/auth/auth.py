@@ -49,6 +49,7 @@ from app.utils.telegram import send_telegram_msg
 from app.services.redis_push import redis_lpush
 from app.cruds.activity_logs import activity_log_crud
 from app.schemas.activity_logs import ActivityLogCreateSchema
+from app.services.session_service import create_user_session
 
 
 class AuthRouter:
@@ -406,8 +407,6 @@ class AuthRouter:
 
         # Create user session
         try:
-            from app.services.session_service import create_user_session
-
             if request:
                 await create_user_session(
                     db=db,
@@ -445,12 +444,9 @@ class AuthRouter:
         """
         Create or set a password for the user.
         """
-        stmt = (
-            select(User)
-            .options(joinedload(User.roles))
-            .where(User.email == data.email.lower())
+        db_user: User = await self.crud.get(
+            db=session, email=data.email.lower(), include_relations="roles"
         )
-        db_user = await self.crud.get(db=session, statement=stmt)
         if not db_user:
             logger.error(f"User {data.email} not found.")
             return not_found_response("User not found.")
@@ -569,13 +565,9 @@ class AuthRouter:
         """
         Request a password change by verifying with a code.
         """
-        stmt = (
-            select(User)
-            .options(joinedload(User.roles))
-            .where(User.email == data.email.lower())
+        db_user: User = await self.crud.get(
+            db=session, email=data.email.lower(), include_relations="roles"
         )
-
-        db_user = await self.crud.get(db=session, statement=stmt)
         if not db_user:
             logger.error(f"User {data.email} not found. Confirm forget password.")
             return not_found_response("User not found.")

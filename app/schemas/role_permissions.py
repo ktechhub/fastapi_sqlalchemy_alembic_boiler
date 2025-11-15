@@ -60,4 +60,4 @@ class RolePermissionFilters(BaseFilters):
 
 class RolePermissionCreateMultiSchema(BaseModel):
     role_uuid: UUIDStr
-    permissions: List[str]
+    permissions: List[UUIDStr]

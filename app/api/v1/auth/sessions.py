@@ -8,7 +8,7 @@ from app.schemas.user_sessions import (
     UserSessionFilters,
 )
 from app.models.user_sessions import UserSession
-from app.models.users import User
+from app.schemas.user_deps import UserDepSchema
 from app.cruds.user_sessions import user_session_crud
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
@@ -52,7 +52,7 @@ class UserSessionRouter:
     async def list(
         self,
         filters: UserSessionFilters = Depends(),
-        user: User = Depends(get_current_user),
+        user: UserDepSchema = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_session),
     ):
         """List all sessions for the current user."""
@@ -74,19 +74,15 @@ class UserSessionRouter:
     async def get(
         self,
         uuid: str,
-        user: User = Depends(get_current_user),
+        user: UserDepSchema = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_session),
     ):
         """Get a specific session by UUID (only if it belongs to current user)."""
         logger.info(f"Getting {self.singular} with UUID: {uuid} for user {user.uuid}")
 
-        session = await self.crud.get(db=db, uuid=uuid)
+        session = await self.crud.get(db=db, uuid=uuid, user_uuid=user.uuid)
 
         if not session:
-            return not_found_response(f"{self.singular} not found!")
-
-        # Ensure user can only access their own sessions
-        if session.user_uuid != user.uuid:
             return not_found_response(f"{self.singular} not found!")
 
         return {
@@ -98,19 +94,15 @@ class UserSessionRouter:
     async def revoke(
         self,
         uuid: str,
-        user: User = Depends(get_current_user),
+        user: UserDepSchema = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_session),
     ):
         """Revoke a specific session (only if it belongs to current user)."""
         logger.info(f"Revoking {self.singular} with UUID: {uuid} for user {user.uuid}")
 
-        session = await self.crud.get(db=db, uuid=uuid)
+        session = await self.crud.get(db=db, uuid=uuid, user_uuid=user.uuid)
 
         if not session:
-            return not_found_response(f"{self.singular} not found!")
-
-        # Ensure user can only revoke their own sessions
-        if session.user_uuid != user.uuid:
             return not_found_response(f"{self.singular} not found!")
 
         # Close the session
@@ -118,6 +110,3 @@ class UserSessionRouter:
 
         logger.info(f"Session {uuid} revoked successfully")
         return success_response(f"{self.singular} revoked successfully!")
-
-
-user_session_router = UserSessionRouter()

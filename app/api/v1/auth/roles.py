@@ -21,7 +21,7 @@ from app.schemas.roles import (
     RoleWithPermissionsSchema,
     RoleWithPermissionsUpdateSchema,
 )
-from app.models.users import User
+from app.schemas.user_deps import UserDepSchema
 from app.cruds.roles import role_crud
 from app.cruds.role_permissions import role_permission_crud
 from app.cruds.permissions import permission_crud
@@ -101,10 +101,10 @@ class RoleRouter:
     async def create(
         self,
         data: RoleCreateSchema,
-        user: User = Depends(get_user_with_permission("can_write_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_write_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
-        logger.info(f"Creating {self.singular}: {data.__dict__}")
+        logger.info(f"Creating {self.singular}: {data.model_dump()}")
         data.name = data.name.lower()
         # check if role already exists
         db_role = await self.crud.get(db=db, name=data.name)
@@ -112,21 +112,10 @@ class RoleRouter:
             logger.error(f"{self.singular} already exists")
             return bad_request_response(f"{self.singular} already exists")
         try:
-            role = await self.crud.create(db=db, obj_in=data)
+            role = await self.crud.create(db=db, obj_in=data, user_uuid=user.uuid)
         except Exception as e:
             logger.error(f"Error creating {self.singular}: {str(e)}")
             return bad_request_response(str(e))
-        await activity_log_crud.create(
-            db=db,
-            obj_in=ActivityLogCreateSchema(
-                user_uuid=user.uuid,
-                entity=self.singular,
-                action="create",
-                previous_data={},
-                new_data=role.to_dict(),
-                description=f"{self.singular} created successfully",
-            ),
-        )
         logger.info(f" {role.name} {self.singular} created successfully")
         return success_response(
             message=f"{self.singular} created successfully", data=role.to_dict()
@@ -136,10 +125,10 @@ class RoleRouter:
         self,
         data: RoleWithPermissionsSchema,
         db: AsyncSession = Depends(get_async_session),
-        user: User = Depends(get_user_with_permission("can_write_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_write_roles")),
     ):
         logger.info(
-            f"Creating {self.singular} with permissions: {data.__dict__} by user {user.uuid}"
+            f"Creating {self.singular} with permissions: {data.model_dump()} by user {user.uuid}"
         )
         data.name = data.name.lower()
         # check if role already exists
@@ -150,7 +139,7 @@ class RoleRouter:
         try:
             permissions = data.permissions
             del data.permissions
-            role = await self.crud.create(db=db, obj_in=data)
+            role = await self.crud.create(db=db, obj_in=data, user_uuid=user.uuid)
             role_permissions = []
             for permission_uuid in permissions:
 
@@ -169,7 +158,9 @@ class RoleRouter:
                     )
                 )
 
-            await role_permission_crud.create_multi(db=db, objs_in=role_permissions)
+            await role_permission_crud.create_multi(
+                db=db, objs_in=role_permissions, user_uuid=user.uuid
+            )
             logger.info(
                 f"{self.singular} created successfully with {len(role_permissions)} permissions"
             )
@@ -230,7 +221,7 @@ class RoleRouter:
         self,
         uuid: UUIDStr,
         filters: RoleFilters = Depends(),
-        user: User = Depends(get_user_with_permission("can_read_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_read_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Fetching {self.singular} with uuid: {uuid}")
@@ -255,7 +246,7 @@ class RoleRouter:
         self,
         uuid: UUIDStr,
         data: RoleUpdateSchema,
-        user: User = Depends(get_user_with_permission("can_write_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_write_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Updating {self.singular} with uuid: {uuid}")
@@ -266,7 +257,9 @@ class RoleRouter:
 
         try:
             previous_role = role.to_dict()
-            role = await self.crud.update(db, db_obj=role, obj_in=data)
+            role = await self.crud.update(
+                db, db_obj=role, obj_in=data, user_uuid=user.uuid
+            )
             logger.info(
                 f"User {user.uuid} updated {self.singular} from {previous_role} to {role.to_dict()}"
             )
@@ -275,21 +268,8 @@ class RoleRouter:
             logger.error(f"Error updating {self.singular}: {str(e)}")
             return bad_request_response(str(e))
         logger.info(f"{self.singular} updated successfully")
-        stmt = (
-            select(Role).options(joinedload(Role.permissions)).where(Role.uuid == uuid)
-        )
-        prev_data = role.to_dict()
-        updated_role = await self.crud.get(db, statement=stmt)
-        await activity_log_crud.create(
-            db=db,
-            obj_in=ActivityLogCreateSchema(
-                user_uuid=user.uuid,
-                entity=self.singular,
-                action="update",
-                previous_data=prev_data,
-                new_data=updated_role.to_dict(),
-                description=f"{self.singular} updated successfully",
-            ),
+        updated_role = await self.crud.get(
+            db, uuid=uuid, include_relations="permissions"
         )
         return success_response(
             message=f"{self.singular} updated successfully", data=updated_role
@@ -299,7 +279,7 @@ class RoleRouter:
         self,
         uuid: UUIDStr,
         data: RoleWithPermissionsUpdateSchema,
-        user: User = Depends(get_user_with_permission("can_write_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_write_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Updating {self.singular} with uuid: {uuid}")
@@ -338,7 +318,9 @@ class RoleRouter:
                         )
                     )
 
-                await role_permission_crud.create_multi(db=db, objs_in=role_permissions)
+                await role_permission_crud.create_multi(
+                    db=db, objs_in=role_permissions, user_uuid=user.uuid
+                )
                 logger.info(
                     f"{self.singular} updated successfully with {len(role_permissions)} permissions"
                 )
@@ -346,21 +328,8 @@ class RoleRouter:
             logger.error(f"Error updating {self.singular}: {str(e)}")
             return bad_request_response(str(e))
         logger.info(f"{self.singular} updated successfully")
-        stmt = (
-            select(Role).options(joinedload(Role.permissions)).where(Role.uuid == uuid)
-        )
-        prev_data = role.to_dict()
-        updated_role = await self.crud.get(db, statement=stmt)
-        await activity_log_crud.create(
-            db=db,
-            obj_in=ActivityLogCreateSchema(
-                user_uuid=user.uuid,
-                entity=self.singular,
-                action="update",
-                previous_data=prev_data,
-                new_data=updated_role.to_dict(),
-                description=f"{self.singular} updated successfully",
-            ),
+        updated_role = await self.crud.get(
+            db, uuid=uuid, include_relations="permissions"
         )
         return success_response(
             message=f"{self.singular} updated successfully", data=updated_role
@@ -369,7 +338,7 @@ class RoleRouter:
     async def delete(
         self,
         uuid: UUIDStr,
-        user: User = Depends(get_user_with_permission("can_delete_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_delete_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
 

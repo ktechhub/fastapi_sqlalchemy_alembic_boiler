@@ -79,8 +79,8 @@ class ActivityLogRouter:
         if filters.end_date:
             main_filters["created_at"] = {"lte": filters.end_date}
 
-        # if filters.search:
-        #     main_filters["$search"] = filters.search
+        if filters.search:
+            main_filters["search"] = filters.search
 
         activity_logs = await self.crud.get_multi(
             db=db,
@@ -101,7 +101,7 @@ class ActivityLogRouter:
 
     async def get(
         self,
-        id: str,
+        id: int,
         user: User = Depends(get_user_with_permission("can_read_logs")),
         db: AsyncSession = Depends(get_async_session),
     ):

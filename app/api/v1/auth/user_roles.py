@@ -12,11 +12,11 @@ from app.schemas.user_roles import (
     UserRoleResponseSchema,
     UserRoleTotalCountListResponseSchema,
 )
-from app.models.users import User
 from app.cruds.user_roles import user_roles_crud
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
 from app.schemas.validate_uuid import UUIDStr
+from app.schemas.user_deps import UserDepSchema
 
 
 class UserRoleRouter:
@@ -47,11 +47,11 @@ class UserRoleRouter:
     async def assign(
         self,
         data: List[UserRoleCreateSchema],
-        user: User = Depends(get_user_with_permission("can_write_user_roles")),
+        user: UserDepSchema = Depends(get_user_with_permission("can_write_user_roles")),
         db: AsyncSession = Depends(get_async_session),
     ):
         for item in data:
-            logger.info(f"Creating {self.singular}: {item.__dict__}")
+            logger.info(f"Creating {self.singular}: {item.model_dump()}")
             existing = await self.crud.get(
                 db, role_uuid=item.role_uuid, user_uuid=item.user_uuid
             )
@@ -70,7 +70,9 @@ class UserRoleRouter:
     async def remove(
         self,
         uuid: UUIDStr,
-        user: User = Depends(get_user_with_permission("can_delete_user_roles")),
+        user: UserDepSchema = Depends(
+            get_user_with_permission("can_delete_user_roles")
+        ),
         db: AsyncSession = Depends(get_async_session),
     ):
 
@@ -88,10 +90,8 @@ class UserRoleRouter:
         logger.critical(
             f"{self.singular} to be deleted: {user_role.to_dict()} by user: {user.uuid}"
         )
-        user_role = await self.crud.remove(db, db_obj=user_role, user_uuid=user.uuid)
+        await self.crud.remove(db, db_obj=user_role, user_uuid=user.uuid)
         logger.critical(
             f"{self.singular} with uuid {uuid} removed successfully by user: {user.uuid}"
         )
-        return success_response(
-            message=f"{self.singular} removed successfully", data=user_role.to_dict()
-        )
+        return success_response(message=f"{self.singular} removed successfully")

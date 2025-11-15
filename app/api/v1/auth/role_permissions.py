@@ -55,14 +55,7 @@ class RolePermissionRouter:
             response_model_exclude_unset=True,
         )
         self.router.add_api_route(
-            "/{uuid}",
-            self.get,
-            methods=["GET"],
-            response_model=self.response_model,
-            response_model_exclude_unset=True,
-        )
-        self.router.add_api_route(
-            "/{uuid}",
+            "/{role_uuid}/permissions/{permission_uuid}",
             self.remove,
             methods=["DELETE"],
             response_model=self.response_model,
@@ -111,10 +104,10 @@ class RolePermissionRouter:
         """
         role_permissions = []
 
-        for permission in permission_data.permissions:
-            perm: Permission = await permission_crud.get(db=db, uuid=permission)
+        for permission_uuid in permission_data.permissions:
+            perm: Permission = await permission_crud.get(db=db, uuid=permission_uuid)
             if not perm:
-                logger.error(f"Permission with uuid {permission} not found")
+                logger.error(f"Permission with uuid {permission_uuid} not found")
                 continue
             if await self.crud.get(
                 db=db,
@@ -173,48 +166,27 @@ class RolePermissionRouter:
             "data": role_permissions["data"],
         }
 
-    async def get(
-        self,
-        uuid: UUIDStr,
-        user: User = Depends(get_user_with_permission("can_read_role_permissions")),
-        db: AsyncSession = Depends(get_async_session),
-    ):
-        logger.info(f"Fetching {self.singular} with uuid: {uuid}")
-        role_permission = await self.crud.get_with_cache(
-            db,
-            identifier=uuid,
-            include_relations="role,permission",
-        )
-        if not role_permission:
-            logger.error(f"{self.singular} with uuid {uuid} not found")
-            return not_found_response(f"{self.singular} not found")
-        logger.info(f"{self.singular} fetched successfully")
-        return success_response(
-            message=f"{self.singular} fetched successfully",
-            data=role_permission,
-        )
-
     async def remove(
         self,
-        uuid: UUIDStr,
+        role_uuid: UUIDStr,
+        permission_uuid: UUIDStr,
         user: User = Depends(get_user_with_permission("can_delete_role_permissions")),
         db: AsyncSession = Depends(get_async_session),
     ):
-        role_permission = await self.crud.get(db, uuid=uuid)
+        role_permission = await self.crud.get(
+            db, role_uuid=role_uuid, permission_uuid=permission_uuid
+        )
         if not role_permission:
-            logger.error(f"{self.singular} with uuid {uuid} not found")
+            logger.error(
+                f"{self.singular} with role uuid {role_uuid} and permission uuid {permission_uuid} not found"
+            )
             return not_found_response(f"{self.singular} not found")
 
         logger.critical(
             f"{self.singular} to be removed: {role_permission.to_dict()} by user {user.uuid}"
         )
-        role_permission = await self.crud.remove(
-            db, db_obj=role_permission, user_uuid=user.uuid
-        )
+        await self.crud.remove(db, db_obj=role_permission, user_uuid=user.uuid)
         logger.critical(
-            f"{self.singular} with {uuid} removed successfully by user {user.uuid}"
+            f"{self.singular} with role uuid {role_uuid} and permission uuid {permission_uuid} removed successfully by user {user.uuid}"
         )
-        return success_response(
-            message=f"{self.singular} removed successfully",
-            data=role_permission.to_dict(),
-        )
+        return success_response(message=f"{self.singular} removed successfully")
