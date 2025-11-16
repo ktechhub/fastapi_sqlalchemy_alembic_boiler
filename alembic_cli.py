@@ -74,7 +74,7 @@ def create_revision(db_name, config_path, message):
     Returns:
         None
     """
-    versions_dir = os.path.join("alembic", "versions")
+    versions_dir = os.path.join("migrations", "versions")
     os.makedirs(versions_dir, exist_ok=True)
 
     config = Config(config_path)
@@ -105,7 +105,7 @@ def upgrade_db(db_name, config_path, revision="head", sql=False):
         "sqlalchemy.url",
         generate_db_url(db_name),
     )
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Upgrading {db_name} to revision {revision}.")
     command.upgrade(config, revision, sql=sql)
 
@@ -125,7 +125,7 @@ def downgrade_db(db_name, revision, config_path, sql=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Downgrading {db_name} to revision {revision}.")
     command.downgrade(config=config, revision=revision, sql=sql)
 
@@ -144,7 +144,7 @@ def show_current(db_name, config_path, verbose=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Current revision for {db_name}:")
     command.current(config, verbose=verbose)
 
@@ -173,7 +173,7 @@ def show_history(
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"History for {db_name}:")
     command.history(
         config,
@@ -199,7 +199,7 @@ def show_revision(db_name, config_path, revision, verbose=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Showing revision {revision} for {db_name}:")
     command.show(config, revision, verbose=verbose)
 
@@ -219,7 +219,7 @@ def stamp_revision(db_name, config_path, revision, sql=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Stamping {db_name} with revision {revision}.")
     command.stamp(config, revision, sql=sql)
 
@@ -237,7 +237,7 @@ def check_revision(db_name, config_path):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Checking {db_name} for new upgrade operations:")
     command.check(config)
 
@@ -258,7 +258,7 @@ def merge_revisions(
     Returns:
         None
     """
-    versions_dir = os.path.join("alembic", "versions")
+    versions_dir = os.path.join("migrations", "versions")
     os.makedirs(versions_dir, exist_ok=True)
 
     config = Config(config_path)
@@ -287,7 +287,7 @@ def show_branches(db_name, config_path, verbose=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Branch points for {db_name}:")
     command.branches(config, verbose=verbose)
 
@@ -307,7 +307,7 @@ def show_heads(db_name, config_path, verbose=False, resolve_dependencies=False):
     """
     config = Config(config_path)
     config.set_main_option("sqlalchemy.url", generate_db_url(db_name))
-    config.set_main_option("version_locations", os.path.join("alembic", "versions"))
+    config.set_main_option("version_locations", os.path.join("migrations", "versions"))
     print(f"Heads for {db_name}:")
     command.heads(config, verbose=verbose, resolve_dependencies=resolve_dependencies)
 
