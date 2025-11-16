@@ -36,4 +36,10 @@ class VerificationCode(BaseIDModelMixin, Base):
         return f"VerificationCode(id={self.id}, code={self.code}, expires_at={self.expires_at}, user_uuid={self.user_uuid})"
 
     def is_expired(self) -> bool:
-        return self.expires_at < datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=timezone.utc)
+        # Ensure expires_at is timezone-aware (MySQL may return naive datetimes)
+        if self.expires_at.tzinfo is None:
+            expires_at = self.expires_at.replace(tzinfo=timezone.utc)
+        else:
+            expires_at = self.expires_at
+        return expires_at < now
