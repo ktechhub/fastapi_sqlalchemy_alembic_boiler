@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from pydantic import BaseModel
-from sqlalchemy.orm import joinedload
 from ..database.base_class import Base
 from ..core.loggers import db_logger as logger
 from .cache_mixin import CacheMixin
@@ -351,17 +350,81 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 return column
         return None
 
+    def _build_nested_joinedload(self, relationship_path: str) -> Optional[Any]:
+        """
+        Build a chained joinedload option from a nested relationship path.
+
+        **Parameters**
+        - `relationship_path`: Dot-separated path (e.g., 'roles.role_permissions.permission')
+
+        **Returns**
+        SQLAlchemy joinedload option with chained relationships, or None if path is invalid
+        """
+        if not relationship_path or "." not in relationship_path:
+            return None
+
+        parts = relationship_path.split(".")
+        if not parts:
+            return None
+
+        # Start with the first relationship on the model
+        first_rel_name = parts[0].strip()
+        if not hasattr(self.model, first_rel_name):
+            logger.warning(
+                f"Relationship '{first_rel_name}' not found on {self.model.__name__}"
+            )
+            return None
+
+        first_rel = getattr(self.model, first_rel_name)
+        if not hasattr(first_rel, "property") or not hasattr(
+            first_rel.property, "mapper"
+        ):
+            logger.warning(
+                f"'{first_rel_name}' is not a valid relationship on {self.model.__name__}"
+            )
+            return None
+
+        # Build chained joinedload
+        current_load = joinedload(first_rel)
+        current_model = first_rel.property.mapper.class_
+
+        # Chain remaining relationships
+        for rel_name in parts[1:]:
+            rel_name = rel_name.strip()
+            if not hasattr(current_model, rel_name):
+                logger.warning(
+                    f"Relationship '{rel_name}' not found on {current_model.__name__}"
+                )
+                return None
+
+            next_rel = getattr(current_model, rel_name)
+            if not hasattr(next_rel, "property") or not hasattr(
+                next_rel.property, "mapper"
+            ):
+                logger.warning(
+                    f"'{rel_name}' is not a valid relationship on {current_model.__name__}"
+                )
+                return None
+
+            current_load = current_load.joinedload(next_rel)
+            current_model = next_rel.property.mapper.class_
+
+        return current_load
+
     def _build_eager_load_from_relations(
         self, include_relations: Optional[str]
     ) -> List[Any]:
         """
         Build eager_load list from include_relations parameter.
+        Supports both flat and nested relationships.
 
         **Parameters**
-        - `include_relations`: Comma-separated string of relation names (e.g., 'permissions,users')
+        - `include_relations`: Comma-separated string of relation names
+          - Flat: 'permissions,users'
+          - Nested: 'roles.role_permissions.permission,country'
 
         **Returns**
-        List of SQLAlchemy relationship attributes to eager load
+        List of SQLAlchemy relationship attributes or joinedload options to eager load
         """
         if not include_relations:
             return []
@@ -372,22 +435,28 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         ]
 
         for relation_name in relation_names:
-            # Check if the relation exists on the model
-            if hasattr(self.model, relation_name):
-                relation_attr = getattr(self.model, relation_name)
-                # Verify it's actually a relationship
-                if hasattr(relation_attr, "property") and hasattr(
-                    relation_attr.property, "mapper"
-                ):
-                    eager_load.append(relation_attr)
+            # Check if it's a nested path (contains dots)
+            if "." in relation_name:
+                nested_load = self._build_nested_joinedload(relation_name)
+                if nested_load:
+                    eager_load.append(nested_load)
+            else:
+                # Flat relationship - check if the relation exists on the model
+                if hasattr(self.model, relation_name):
+                    relation_attr = getattr(self.model, relation_name)
+                    # Verify it's actually a relationship
+                    if hasattr(relation_attr, "property") and hasattr(
+                        relation_attr.property, "mapper"
+                    ):
+                        eager_load.append(relation_attr)
+                    else:
+                        logger.warning(
+                            f"'{relation_name}' is not a valid relationship on {self.model.__name__}"
+                        )
                 else:
                     logger.warning(
-                        f"'{relation_name}' is not a valid relationship on {self.model.__name__}"
+                        f"Relationship '{relation_name}' not found on {self.model.__name__}"
                     )
-            else:
-                logger.warning(
-                    f"Relationship '{relation_name}' not found on {self.model.__name__}"
-                )
         return eager_load
 
     async def get(
@@ -520,8 +589,20 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 )
             else:
                 # When selecting full models, we can use joinedload
+                # Handle both flat relationships and nested joinedload options
+                load_options = []
                 for relationship in eager_load:
-                    query = query.options(joinedload(relationship))
+                    # Check if it's already a joinedload option (nested) or a relationship attribute (flat)
+                    if hasattr(relationship, "path") or hasattr(relationship, "_path"):
+                        # It's already a joinedload option (nested relationship)
+                        load_options.append(relationship)
+                    else:
+                        # It's a flat relationship attribute
+                        load_options.append(joinedload(relationship))
+
+                # Apply all load options at once
+                if load_options:
+                    query = query.options(*load_options)
 
         # Apply sorting
         if sort:
@@ -742,8 +823,20 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
                 )
             else:
                 # When selecting full models, we can use joinedload
+                # Handle both flat relationships and nested joinedload options
+                load_options = []
                 for relationship in eager_load:
-                    query = query.options(joinedload(relationship))
+                    # Check if it's already a joinedload option (nested) or a relationship attribute (flat)
+                    if hasattr(relationship, "path") or hasattr(relationship, "_path"):
+                        # It's already a joinedload option (nested relationship)
+                        load_options.append(relationship)
+                    else:
+                        # It's a flat relationship attribute
+                        load_options.append(joinedload(relationship))
+
+                # Apply all load options at once
+                if load_options:
+                    query = query.options(*load_options)
 
         # Apply grouping
         if group_by:
