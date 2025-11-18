@@ -174,7 +174,7 @@ class CacheMixin:
         self,
         db: AsyncSession,
         *,
-        identifier: str,
+        identifier: Optional[str] = None,
         eager_load: Optional[List[Any]] = None,
         fields: Optional[Union[str, List[Any]]] = None,
         **filters: Any,
@@ -208,12 +208,17 @@ class CacheMixin:
             # logger.info(f"Using cached data for {self.model_name} item {identifier}")
             return cached_result
 
+        main_filters = {}
+        if identifier:
+            main_filters[self._get_identifier_field_name()] = identifier
+        main_filters.update(filters)
+
         # If not in cache, fetch from database
         result = await self.get(
             db=db,
             eager_load=eager_load,
             fields=fields,
-            **{self._get_identifier_field_name(): identifier, **filters},
+            **main_filters,
         )
 
         # Cache the result if found using the optimized set method
