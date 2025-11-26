@@ -246,9 +246,20 @@ class RedisMessageProcessor:
                             # Acknowledge successful processing
                             await self._acknowledge_message(stream_name, message_id_str)
                         else:
-                            logger.warning(
-                                f"Failed to process pending message {message_id_str}, will retry later"
-                            )
+                            # Check if message was moved to poison queue
+                            # If retries >= MAX_REDIS_QUEUE_RETRIES, it was moved to poison queue
+                            # In that case, acknowledge it to remove from PEL and stop retrying
+                            retries = message.get("retries", 0)
+                            if retries >= settings.MAX_REDIS_QUEUE_RETRIES:
+                                # Message was moved to poison queue, acknowledge it to stop retries
+                                await self._acknowledge_message(stream_name, message_id_str)
+                                logger.info(
+                                    f"Acknowledged pending message {message_id_str} after moving to poison queue"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Failed to process pending message {message_id_str}, will retry later"
+                                )
                     except Exception as e:
                         logger.error(
                             f"Error processing claimed message {message_id}: {e}"
@@ -414,10 +425,23 @@ class RedisMessageProcessor:
                                         f"Successfully processed and acknowledged message {message_id_str}"
                                     )
                             else:
-                                logger.warning(
-                                    f"Failed to process message {message_id_str}, will retry via pending list"
-                                )
-                                # Message will remain in PEL (Pending Entry List) for retry
+                                # Check if message was moved to poison queue
+                                # If retries >= MAX_REDIS_QUEUE_RETRIES, it was moved to poison queue
+                                # In that case, acknowledge it to remove from PEL and stop retrying
+                                retries = message.get("retries", 0)
+                                if retries >= settings.MAX_REDIS_QUEUE_RETRIES:
+                                    # Message was moved to poison queue, acknowledge it to stop retries
+                                    await self._acknowledge_message(
+                                        stream_name, message_id_str
+                                    )
+                                    logger.info(
+                                        f"Acknowledged message {message_id_str} after moving to poison queue"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Failed to process message {message_id_str}, will retry via pending list"
+                                    )
+                                    # Message will remain in PEL (Pending Entry List) for retry
 
                         except json.JSONDecodeError as e:
                             logger.error(
