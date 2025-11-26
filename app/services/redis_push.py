@@ -21,67 +21,78 @@ _flush_task: Optional[asyncio.Task] = None
 
 def redis_lpush(message: dict, delay_seconds: int = 0) -> None:
     """
-    Push a message to a list in Redis.
+    Push a message to a Redis Stream (synchronous version for backward compatibility).
 
     Args:
-        message (str, dict, list): The message to push to the list.
+        message (dict): The message to push to the stream.
         delay_seconds (int): The number of seconds to delay the message.
 
     Returns:
         None
     """
     queue_name = message["queue_name"]
+    stream_name = f"{queue_name}:stream"
 
     if delay_seconds > 0:
-        delay_timestamp = int(time.time()) + delay_seconds
+        # For delayed messages, use timestamp-based ID
+        delay_timestamp_ms = int((time.time() + delay_seconds) * 1000)
         delayed_datetime = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp)
+            "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp_ms / 1000)
         )
         message["delay_until"] = delayed_datetime
-        client.zadd(f"{queue_name}-delayed", {json.dumps(message): delay_timestamp})
+        # Use timestamp as stream ID for delayed messages
+        stream_id = f"{delay_timestamp_ms}-0"
+        client.xadd(stream_name, {"data": json.dumps(message)}, id=stream_id)
         logger.info(
-            f"Pushed {message} to {queue_name} with delay of {delay_seconds} seconds"
+            f"Pushed {message} to {queue_name} stream with delay of {delay_seconds} seconds (ID: {stream_id})"
         )
     else:
-        client.lpush(queue_name, json.dumps(message))
-        logger.info(f"Pushed {message} to {queue_name}.")
+        # For immediate messages, use auto-generated ID
+        stream_id = client.xadd(stream_name, {"data": json.dumps(message)})
+        logger.info(f"Pushed {message} to {queue_name} stream (ID: {stream_id})")
 
 
 async def redis_push_async(
     message: dict, delay_seconds: int = 0, log: bool = True
 ) -> None:
     """
-    Push a message to a list in Redis.
+    Push a message to a Redis Stream.
 
     Args:
-        message (str, dict, list): The message to push to the list.
+        message (dict): The message to push to the stream.
         delay_seconds (int): The number of seconds to delay the message.
+        log (bool): Whether to log the operation.
     """
     queue_name = message["queue_name"]
+    stream_name = f"{queue_name}:stream"
     async_client = await get_async_redis_client()
 
     if delay_seconds > 0:
-        delay_timestamp = int(time.time()) + delay_seconds
+        # For delayed messages, use timestamp-based ID
+        delay_timestamp_ms = int((time.time() + delay_seconds) * 1000)
         delayed_datetime = time.strftime(
-            "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp)
+            "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp_ms / 1000)
         )
         message["delay_until"] = delayed_datetime
-        await async_client.zadd(
-            f"{queue_name}-delayed", {json.dumps(message): delay_timestamp}
+        # Use timestamp as stream ID for delayed messages
+        stream_id = f"{delay_timestamp_ms}-0"
+        await async_client.xadd(
+            stream_name, {"data": json.dumps(message)}, id=stream_id
         )
         if log:
             logger.info(
-                f"Pushed {message} to {queue_name} with delay of {delay_seconds} seconds"
+                f"Pushed {message} to {queue_name} stream with delay of {delay_seconds} seconds (ID: {stream_id})"
             )
     else:
-        await async_client.lpush(queue_name, json.dumps(message))
+        # For immediate messages, use auto-generated ID
+        stream_id = await async_client.xadd(stream_name, {"data": json.dumps(message)})
         if log:
-            logger.info(f"Pushed {message} to {queue_name}.")
+            logger.info(f"Pushed {message} to {queue_name} stream (ID: {stream_id})")
 
 
 # New async methods with batching and connection pooling
 async def _flush_batch_async(queue_name: str) -> None:
-    """Flush a batch of messages to Redis using async client"""
+    """Flush a batch of messages to Redis Stream using async client"""
     if not _message_batches[queue_name]:
         return
 
@@ -89,25 +100,28 @@ async def _flush_batch_async(queue_name: str) -> None:
         async_client = await get_async_redis_client()
         messages = _message_batches[queue_name]
         _message_batches[queue_name] = []
+        stream_name = f"{queue_name}:stream"
 
         # Use pipeline for batch operations
         async with async_client.pipeline() as pipe:
             for message in messages:
-                if message.get("delay_seconds", 0) > 0:
-                    delay_timestamp = int(time.time()) + message["delay_seconds"]
+                delay_seconds = message.get("delay_seconds", 0)
+                if delay_seconds > 0:
+                    # For delayed messages, use timestamp-based ID
+                    delay_timestamp_ms = int((time.time() + delay_seconds) * 1000)
                     delayed_datetime = time.strftime(
-                        "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp)
+                        "%Y-%m-%d %H:%M:%S", time.localtime(delay_timestamp_ms / 1000)
                     )
                     message["delay_until"] = delayed_datetime
-                    pipe.zadd(
-                        f"{queue_name}-delayed", {json.dumps(message): delay_timestamp}
-                    )
+                    stream_id = f"{delay_timestamp_ms}-0"
+                    pipe.xadd(stream_name, {"data": json.dumps(message)}, id=stream_id)
                 else:
-                    pipe.lpush(queue_name, json.dumps(message))
+                    # For immediate messages, use auto-generated ID
+                    pipe.xadd(stream_name, {"data": json.dumps(message)})
 
             await pipe.execute()
 
-        logger.info(f"Flushed {len(messages)} messages to {queue_name}")
+        logger.info(f"Flushed {len(messages)} messages to {queue_name} stream")
         _last_flush[queue_name] = time.time()
 
     except Exception as e:

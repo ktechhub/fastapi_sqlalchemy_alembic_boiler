@@ -15,7 +15,7 @@ RUN apk update && apk add --no-cache \
 
 # Upgrade pip and install Python packages
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install redis asyncio
+RUN pip install redis asyncio python-dotenv
 
 COPY delayed_msgs.py /app
 
