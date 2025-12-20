@@ -9,7 +9,7 @@ black
 boto3==1.35.90
 cryptography==44.0.0
 Faker==35.2.0
-fastapi==0.121.2
+fastapi==0.115.14
 fastapi-cli==0.0.7
 fastapi-mail==1.4.2
 greenlet==3.1.1
@@ -27,9 +27,8 @@ PyYAML==6.0.2
 redis==6.2.0
 sendgrid==6.12.4
 sentry-sdk==2.32.0
-python-slugify==8.0.4
+slugify==0.0.1
 SQLAlchemy-Utils==0.41.2
 uvloop==0.21.0
-user-agents==2.2.0
 watchfiles==1.0.5
 websockets==15.0.1
