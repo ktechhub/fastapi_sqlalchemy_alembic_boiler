@@ -46,3 +46,8 @@ deploy:
 	sleep 10 # wait for the container to start
 	make alembic-upgrade
 	make nginx-reload
+
+
+# Ansible automation
+ansible:
+	ansible-playbook -i ansible/hosts ansible/playbook.yml

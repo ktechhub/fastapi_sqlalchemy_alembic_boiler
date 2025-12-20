@@ -14,9 +14,11 @@ from app.schemas.logs import (
     LogFilters,
 )
 from app.services.meili_search import MeiliSearchService
+from app.services.logs_service import LogService
 from app.models.users import User
 from app.database.get_session import get_async_session
 from app.core.loggers import app_logger as logger
+from app.core.config import settings
 
 
 class SystemLogRouter:
@@ -26,7 +28,22 @@ class SystemLogRouter:
         self.plural = "Logs"
         self.response_model = LogResponseSchema
         self.response_list_model = LogTotalCountListResponseSchema
-        self.logs_service = MeiliSearchService(index_name="logs")
+
+        # Use MeiliSearch if configured, otherwise fallback to LogService
+        if settings.MEILI_SEARCH_URL and settings.MEILI_SEARCH_API_KEY:
+            try:
+                self.logs_service = MeiliSearchService(index_name="logs")
+                self.use_meilisearch = True
+            except Exception:
+                logger.warning(
+                    "MeiliSearch initialization failed, falling back to LogService"
+                )
+                self.logs_service = LogService()
+                self.use_meilisearch = False
+        else:
+            logger.info("MeiliSearch not configured, using LogService")
+            self.logs_service = LogService()
+            self.use_meilisearch = False
 
         self.router.add_api_route(
             "/",
@@ -43,6 +60,14 @@ class SystemLogRouter:
             response_model=self.response_model,
             description="Get a log by ID",
             summary="Get a log by ID",
+        )
+        self.router.add_api_route(
+            "/{id}",
+            self.delete,
+            methods=["DELETE"],
+            response_model=self.response_model,
+            description="Delete a log by ID",
+            summary="Delete a log by ID",
         )
 
     async def list(
@@ -85,8 +110,11 @@ class SystemLogRouter:
                 conditions.append(f"logger_name = '{filters.logger_name}'")
 
             if filters.id:
-                filters.id = filters.id.split(",")
-                conditions.append(f"id IN {filters.id}")
+                id_list = filters.id.split(",")
+                # Format for MeiliSearch: id IN ['id1', 'id2']
+                # Format for LogService: id IN ['id1', 'id2']
+                id_list_str = ", ".join([f"'{id.strip()}'" for id in id_list])
+                conditions.append(f"id IN [{id_list_str}]")
 
             # Combine all filters
             main_filters = " AND ".join(conditions) if conditions else None
@@ -107,7 +135,7 @@ class SystemLogRouter:
                 "data": result["hits"],
             }
         except MeilisearchApiError as e:
-            logger.error(f"Error fetching logs: {e}")
+            logger.error(f"Error fetching logs from MeiliSearch: {e}")
             return bad_request_response(message="Error fetching logs")
         except Exception as e:
             logger.error(f"Error fetching logs: {e}")
@@ -127,12 +155,45 @@ class SystemLogRouter:
                     message=f"{self.singular} with ID {id} not found"
                 )
             logger.info(f"Log {id} fetched successfully by user {user.uuid}")
+            # Handle both dict (LogService) and object (MeiliSearch) responses
+            log_data = log if isinstance(log, dict) else log.__dict__
             return success_response(
-                data=log.__dict__, message=f"{self.singular} fetched successfully"
+                data=log_data, message=f"{self.singular} fetched successfully"
             )
         except MeilisearchApiError as e:
-            logger.error(f"Error fetching log: {e}")
+            logger.error(f"Error fetching log from MeiliSearch: {e}")
             return bad_request_response(message="Error fetching log")
         except Exception as e:
             logger.error(f"Error fetching log: {e}")
             return bad_request_response(message="Error fetching log")
+
+    async def delete(
+        self,
+        id: str,
+        user: User = Depends(get_user_with_permission("can_delete_logs")),
+        db: AsyncSession = Depends(get_async_session),
+    ):
+        try:
+            log = self.logs_service.get_one(id)
+
+            if not log:
+                return not_found_response(
+                    detail=f"{self.singular} with ID {id} not found"
+                )
+
+            # Handle both dict (LogService) and object (MeiliSearch) responses
+            log_data = log if isinstance(log, dict) else log.__dict__
+            logger.critical(f"Log to be deleted: {log_data} by user {user.uuid}")
+            self.logs_service.delete_one(id)
+
+            logger.critical(f"Log {id} deleted successfully by user {user.uuid}")
+
+            return success_response(
+                data=log_data, message=f"{self.singular} deleted successfully"
+            )
+        except MeilisearchApiError as e:
+            logger.error(f"Error deleting log from MeiliSearch: {e}")
+            return bad_request_response(message="Error deleting log")
+        except Exception as e:
+            logger.error(f"Error deleting log: {e}")
+            return bad_request_response(message="Error deleting log")

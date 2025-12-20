@@ -252,7 +252,9 @@ class RedisMessageProcessor:
                             retries = message.get("retries", 0)
                             if retries >= settings.MAX_REDIS_QUEUE_RETRIES:
                                 # Message was moved to poison queue, acknowledge it to stop retries
-                                await self._acknowledge_message(stream_name, message_id_str)
+                                await self._acknowledge_message(
+                                    stream_name, message_id_str
+                                )
                                 logger.info(
                                     f"Acknowledged pending message {message_id_str} after moving to poison queue"
                                 )
