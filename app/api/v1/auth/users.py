@@ -433,7 +433,11 @@ class UserRouter:
         # Delete user roles
         await user_roles_crud.remove_multi(db, user_uuid=uuid)
         await db.refresh(db_user)
-        await self.crud.soft_delete(db, db_obj=db_user)
+        await self.crud.soft_delete(
+            db,
+            db_obj=db_user,
+            extra_fields={"is_verified": False, "verified_at": None, "password": None},
+        )
 
         logger.critical(
             f"{self.singular} {uuid} deleted successfully by user {user.uuid}"

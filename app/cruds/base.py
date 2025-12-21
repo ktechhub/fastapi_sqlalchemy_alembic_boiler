@@ -1377,6 +1377,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         *,
         db_obj: Optional[ModelType] = None,
         statement: Optional[Any] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
         **filters: Any,
     ) -> Optional[ModelType]:
         """
@@ -1409,7 +1410,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
             setattr(db_obj, "soft_deleted_at", datetime.now(timezone.utc))
             setattr(db_obj, "soft_deleted", True)
             setattr(db_obj, "is_active", False)
-
+            if extra_fields:
+                for field, value in extra_fields.items():
+                    setattr(db_obj, field, value)
             try:
                 db.add(db_obj)
                 await db.commit()
