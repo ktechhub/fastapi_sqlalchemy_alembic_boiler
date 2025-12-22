@@ -1378,7 +1378,6 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         db_obj: Optional[ModelType] = None,
         statement: Optional[Any] = None,
         extra_fields: Optional[Dict[str, Any]] = None,
-        **filters: Any,
     ) -> Optional[ModelType]:
         """
         Soft delete an existing record using either direct object updates or a custom SQLAlchemy statement.
@@ -1387,7 +1386,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         - `db`: The database session
         - `db_obj`: The existing record to update (used for object-based updates)
         - `statement`: A custom SQLAlchemy update statement (used for statement-based updates)
-        - `**filters`: Keyword arguments for dynamic filtering.
+        - `extra_fields`: Extra fields to update (default is None).
 
         **Returns**
         The updated record (for object-based updates) or `None` (for statement-based updates).
@@ -1431,6 +1430,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         *,
         db_obj: ModelType,
         fields: Dict = {"soft_deleted": False, "soft_deleted_at": None},
+        extra_fields: Optional[Dict[str, Any]] = None,
     ):
         """
         Restore a soft-deleted record by updating the `soft_deleted` and `soft_deleted_at` fields.
@@ -1439,7 +1439,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         - `db`: The database session
         - `db_obj`: The soft-deleted record to restore
         - `fields`: The fields to update for restoration (default is {"soft_deleted": False, "soft_deleted_at": None}).
-
+        - `extra_fields`: Extra fields to update (default is None).
         **Returns**
         The restored record after committing to the database.
 
@@ -1448,12 +1448,16 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType], CacheMixi
         restored_user = await user_crud.restore_record(
             db=session,
             db_obj=deleted_user,
-            fields={"soft_deleted": False, "soft_deleted_at": None}
+            fields={"soft_deleted": False, "soft_deleted_at": None},
+            extra_fields={"is_verified": False, "verified_at": None, "password": None},
         )
         ```
         """
         for field, value in fields.items():
             setattr(db_obj, field, value)
+        if extra_fields:
+            for field, value in extra_fields.items():
+                setattr(db_obj, field, value)
         try:
             db.add(db_obj)
             await db.commit()
