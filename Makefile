@@ -1,6 +1,7 @@
 include .env
 export $(shell sed 's/=.*//' .env)
 
+DOCKER_COMPOSE = docker compose
 DOCKER_COMPOSE_FILE = docker-compose.yml
 
 ifeq ($(ENV), local)
@@ -11,14 +12,20 @@ else
 	DOCKER_COMPOSE_FILE = prod.docker-compose.yml
 endif
 
+dc-build:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) build
+
 dc-up:
-	docker-compose -f $(DOCKER_COMPOSE_FILE) up -d --build
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) up -d --build
+
+dc-up-no-build:
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) up -d
 
 dc-up-with-logs:
-	docker-compose -f $(DOCKER_COMPOSE_FILE) up --build
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) up --build
 
 dc-down:
-	docker-compose -f $(DOCKER_COMPOSE_FILE) down
+	$(DOCKER_COMPOSE) -f $(DOCKER_COMPOSE_FILE) down
 
 git-update:
 	@if [ "$(ENV)" = "dev" ]; then \
@@ -39,15 +46,18 @@ alembic-upgrade:
 init-db:
 	docker exec app python3 init_db.py
 
+backup-db:
+	docker exec app python3 backup_db.py
+
 deploy:
 	make git-update
+	make dc-build
 	make dc-down
-	make dc-up
+	make dc-up-no-build
 	sleep 10 # wait for the container to start
 	make alembic-upgrade
 	make nginx-reload
 
-
 # Ansible automation
-ansible:
+ansible-apply:
 	ansible-playbook -i ansible/hosts ansible/playbook.yml

@@ -346,8 +346,7 @@ class UserRouter:
                 return bad_request_response(f"Role {role_uuid} not found!")
 
             if role.name == "user":
-                logger.error("Cannot assign user role to a user")
-                return bad_request_response("Cannot assign user role to a user")
+                logger.warning("Assigning user role to a user")
 
             check_user_role = await user_roles_crud.get(
                 db, user_uuid=db_user.uuid, role_uuid=role.uuid
