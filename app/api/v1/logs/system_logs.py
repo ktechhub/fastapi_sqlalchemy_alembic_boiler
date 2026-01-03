@@ -61,14 +61,6 @@ class SystemLogRouter:
             description="Get a log by ID",
             summary="Get a log by ID",
         )
-        self.router.add_api_route(
-            "/{id}",
-            self.delete,
-            methods=["DELETE"],
-            response_model=self.response_model,
-            description="Delete a log by ID",
-            summary="Delete a log by ID",
-        )
 
     async def list(
         self,
@@ -166,34 +158,3 @@ class SystemLogRouter:
         except Exception as e:
             logger.error(f"Error fetching log: {e}")
             return bad_request_response(message="Error fetching log")
-
-    async def delete(
-        self,
-        id: str,
-        user: User = Depends(get_user_with_permission("can_delete_logs")),
-        db: AsyncSession = Depends(get_async_session),
-    ):
-        try:
-            log = self.logs_service.get_one(id)
-
-            if not log:
-                return not_found_response(
-                    detail=f"{self.singular} with ID {id} not found"
-                )
-
-            # Handle both dict (LogService) and object (MeiliSearch) responses
-            log_data = log if isinstance(log, dict) else log.__dict__
-            logger.critical(f"Log to be deleted: {log_data} by user {user.uuid}")
-            self.logs_service.delete_one(id)
-
-            logger.critical(f"Log {id} deleted successfully by user {user.uuid}")
-
-            return success_response(
-                data=log_data, message=f"{self.singular} deleted successfully"
-            )
-        except MeilisearchApiError as e:
-            logger.error(f"Error deleting log from MeiliSearch: {e}")
-            return bad_request_response(message="Error deleting log")
-        except Exception as e:
-            logger.error(f"Error deleting log: {e}")
-            return bad_request_response(message="Error deleting log")
