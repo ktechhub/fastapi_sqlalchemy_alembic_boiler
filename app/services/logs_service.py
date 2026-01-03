@@ -46,11 +46,8 @@ class LogService:
         except ValueError:
             return None
 
-        # Normalize service name to match schema allowed values
-        service_name = self._normalize_service_name(settings.SERVICE_NAME)
-
         # Generate a unique ID from timestamp, level, and logger name
-        log_id = f"{int(dt.timestamp() * 1000)}-{level}-{service_name}"
+        log_id = f"{int(dt.timestamp() * 1000)}-{level}-{settings.SERVICE_NAME}"
 
         return {
             "id": log_id,
@@ -58,41 +55,9 @@ class LogService:
             "timestamp_readable": dt.isoformat(),
             "level": level,
             "message": message,
-            "service": service_name,
+            "service": settings.SERVICE_NAME,
             "logger_name": logger_name,
         }
-
-    def _normalize_service_name(self, service_name: str) -> str:
-        """
-        Normalize service name to match schema allowed values.
-        Maps variations like 'mt_dev_api_v2' to 'mt_api_v2'.
-        """
-        if not service_name:
-            return "mt_api_v2"
-
-        service_lower = service_name.lower()
-
-        # Map common variations to schema-allowed values
-        service_mapping = {
-            "mt_dev_api_v2": "mt_api_v2",
-            "mt_api_v2": "mt_api_v2",
-            "mediatranscribe": "mt_api_v2",  # Common alias
-            "auth": "auth",
-            "logs": "logs",
-            "analytics": "analytics",
-            "messaging_layer": "messaging_layer",
-        }
-
-        # Check exact match first
-        if service_lower in service_mapping:
-            return service_mapping[service_lower]
-
-        # Check if it contains 'mt_api_v2' or variations
-        if "mt" in service_lower and "api" in service_lower and "v2" in service_lower:
-            return "mt_api_v2"
-
-        # Return mapped value or default to 'mt_api_v2' if not found
-        return service_mapping.get(service_lower, "mt_api_v2")
 
     def _read_all_logs(self) -> List[Dict[str, Any]]:
         """
