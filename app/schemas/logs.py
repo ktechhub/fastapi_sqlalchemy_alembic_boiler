@@ -20,14 +20,9 @@ class LogBaseSchema(BaseModel):
     message: Optional[Union[str, dict, list, Any]] = Field(
         None, description="The message of the log"
     )
-    service: Optional[
-        Literal[
-            "auth",
-            "logs",
-            "analytics",
-            "messaging_layer",
-        ]
-    ] = Field(None, description="The service that generated the log")
+    service: Optional[str] = Field(
+        None, description="The service that generated the log"
+    )
     logger_name: Optional[
         Literal[
             "app_logger",
