@@ -148,6 +148,10 @@ app.add_middleware(
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Skip logging OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         start_time = time.time()
 
         # Log incoming request
