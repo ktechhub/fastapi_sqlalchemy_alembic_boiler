@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
 from app.models.roles import Role
+from app.models.role_permissions import RolePermission
 from app.models.users import User
 from app.models.codes import VerificationCode
 from app.utils.password_util import verify_password, hash_password
@@ -375,9 +376,17 @@ class AuthRouter:
         """
         User Login.
         """
-        db_user: User = await self.crud.get(
-            db=db, email=data.username.lower(), include_relations="roles,country"
+        stmt = (
+            select(User)
+            .options(
+                joinedload(User.roles)
+                .joinedload(Role.role_permissions)
+                .joinedload(RolePermission.permission),
+                joinedload(User.country),
+            )
+            .where(User.email == data.username.lower())
         )
+        db_user: User = await self.crud.get(db=db, statement=stmt)
         if not db_user:
             logger.error(f"User {data.username} not found.")
             return bad_request_response("Incorrect email or password")

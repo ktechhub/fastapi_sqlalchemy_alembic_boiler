@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, UploadFile, status, Header
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
 from app.deps.user import get_current_user, reuseable_oauth
 from app.models.users import User
+from app.models.roles import Role
+from app.models.role_permissions import RolePermission
 from app.core.config import settings
 from app.utils.password_util import verify_password, hash_password
 from app.utils.responses import bad_request_response, success_response
@@ -100,9 +104,18 @@ class UserProfileRouter:
         db: AsyncSession = Depends(get_async_session),
     ):
         logger.info(f"Fetching user details for the current user {user.email}")
-        data = await self.crud.get(
-            db, uuid=user.uuid, include_relations="roles,country"
+        stmt = (
+            select(User)
+            .options(
+                joinedload(User.roles)
+                .joinedload(Role.role_permissions)
+                .joinedload(RolePermission.permission),
+                joinedload(User.country),
+            )
+            .where(User.uuid == user.uuid)
         )
+
+        data = await self.crud.get(db, statement=stmt)
         logger.info(f"User details fetched successfully for {user.email}")
         return success_response("User details fetched successfully.", data=data)
 

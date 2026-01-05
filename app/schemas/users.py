@@ -300,6 +300,7 @@ class UserSchema(UserUpdateSchema, BaseUUIDSchema):
     country_id: Optional[int] = None
     roles: Optional[List[UserRoleSchema]] = None
     country: Optional[CountrySchema] = None
+    user_permissions: Optional[List] = None
 
 
 class UserResponseSchema(BaseResponseSchema):

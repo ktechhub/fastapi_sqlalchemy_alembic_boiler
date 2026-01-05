@@ -93,3 +93,57 @@ class User(Base, BaseUUIDModelMixin, SoftDeleteMixin, S3URLMixin):
         # Make sure user_roles is preloaded and add roles to the response
         base_dict["roles"] = [role.to_dict() for role in self.roles]
         return base_dict
+
+    def get_permissions(self) -> set:
+        """Get all permissions for the user from their roles"""
+        permissions_set = set()
+        if self.roles:
+            for role in self.roles:
+                # Access role_permissions directly to avoid lazy loading issues
+                if hasattr(role, "role_permissions") and role.role_permissions:
+                    for role_permission in role.role_permissions:
+                        if (
+                            hasattr(role_permission, "permission")
+                            and role_permission.permission
+                        ):
+                            permissions_set.add(role_permission.permission)
+        return permissions_set
+
+    @property
+    def permissions(self) -> set:
+        """Get all permissions for the user from their roles (cached)"""
+        if not hasattr(self, "_permissions_cache"):
+            self._permissions_cache = self.get_permissions()
+        return self._permissions_cache
+
+    def get_permissions_list(self) -> list:
+        """Get all permissions as a list of permission names"""
+        return [permission.name for permission in self.get_permissions()]
+
+    def has_permission(self, permission_name: str) -> bool:
+        """Check if user has a specific permission"""
+        return any(
+            permission.name == permission_name for permission in self.get_permissions()
+        )
+
+    def has_any_permission(self, permission_names: list) -> bool:
+        """Check if user has any of the specified permissions"""
+        user_permission_names = {
+            permission.name for permission in self.get_permissions()
+        }
+        return any(name in user_permission_names for name in permission_names)
+
+    def has_all_permissions(self, permission_names: list) -> bool:
+        """Check if user has all of the specified permissions"""
+        user_permission_names = {
+            permission.name for permission in self.get_permissions()
+        }
+        return all(name in user_permission_names for name in permission_names)
+
+    @property
+    def user_permissions(self) -> list:
+        """Get all permissions for the user from their roles"""
+        try:
+            return self.get_permissions_list()
+        except Exception:
+            return []
