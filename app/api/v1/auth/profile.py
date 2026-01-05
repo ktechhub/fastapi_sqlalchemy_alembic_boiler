@@ -80,7 +80,7 @@ class UserProfileRouter:
             response_model_exclude_unset=True,
         )
         self.router.add_api_route(
-            "/refresh-token      /",
+            "/refresh-token/",
             self.generate_refresh_token,
             methods=["POST"],
             status_code=status.HTTP_200_OK,
