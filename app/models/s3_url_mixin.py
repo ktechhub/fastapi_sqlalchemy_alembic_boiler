@@ -30,20 +30,35 @@ class S3URLMixin:
             s3_url_fields = []
 
         # If this field is configured as an S3 URL field and has a value
-        if (
-            name in s3_url_fields
-            and value
-            and isinstance(value, str)
-            and value.startswith(
-                f"{settings.S3_STORAGE_HOST}/{settings.S3_STORAGE_BUCKET}/"
-            )
-        ):
+        if name in s3_url_fields and value:
+            # Handle list of URLs (e.g., images field)
+            if isinstance(value, list):
+                presigned_urls = []
+                for url in value:
+                    if isinstance(url, str) and url.startswith(
+                        f"{settings.S3_STORAGE_HOST}/{settings.S3_STORAGE_BUCKET}/"
+                    ):
+                        try:
+                            presigned_urls.append(
+                                get_private_file_url(url, self._s3_url_expires_in)
+                            )
+                        except Exception:
+                            # If presigned URL generation fails, return original URL
+                            presigned_urls.append(url)
+                    else:
+                        # Not an S3 URL, keep as-is
+                        presigned_urls.append(url)
+                return presigned_urls
 
-            try:
-                # Return presigned URL instead of original URL
-                return get_private_file_url(value, self._s3_url_expires_in)
-            except Exception:
-                # If presigned URL generation fails, return original URL
-                return value
+            # Handle single string URL
+            elif isinstance(value, str) and value.startswith(
+                f"{settings.S3_STORAGE_HOST}/{settings.S3_STORAGE_BUCKET}/"
+            ):
+                try:
+                    # Return presigned URL instead of original URL
+                    return get_private_file_url(value, self._s3_url_expires_in)
+                except Exception:
+                    # If presigned URL generation fails, return original URL
+                    return value
 
         return value
