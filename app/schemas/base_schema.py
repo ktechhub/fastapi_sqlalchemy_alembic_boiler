@@ -80,6 +80,7 @@ class BaseSlugUUIDSchema(BaseUUIDSchema):
         description="Unique human-readable identifier for the entity, often used in URLs.",
     )
 
+
 class BaseResponseSchema(BaseModel):
     """
     BaseResponseSchema represents a standard response containing a status code and a message.
