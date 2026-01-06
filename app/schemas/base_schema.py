@@ -69,6 +69,17 @@ class BaseSlugSchema(BaseSchema):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BaseSlugUUIDSchema(BaseUUIDSchema):
+    """
+    BaseSlugUUIDSchema extends BaseUUIDSchema by adding a slug field.
+    Suitable for models where a human-readable unique identifier (slug) is needed.
+    """
+
+    slug: Optional[str] = Field(
+        default=None,
+        description="Unique human-readable identifier for the entity, often used in URLs.",
+    )
+
 class BaseResponseSchema(BaseModel):
     """
     BaseResponseSchema represents a standard response containing a status code and a message.

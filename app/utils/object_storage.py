@@ -35,9 +35,12 @@ async def save_file_to_s3(
     )
 
     try:
-        # Reset file position
+        # Reset file position (handle both sync and async seek)
         if hasattr(file_object, "seek"):
-            file_object.seek(0)
+            seek_result = file_object.seek(0)
+            # Check if seek is async (coroutine)
+            if hasattr(seek_result, "__await__"):
+                await seek_result
 
         # Read the entire file content
         if hasattr(file_object, "read"):
