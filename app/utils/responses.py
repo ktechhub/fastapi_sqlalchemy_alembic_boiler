@@ -245,6 +245,31 @@ def too_many_requests_response(
     raise exception
 
 
+def no_content_response(
+    message: str = "No content",
+    headers: Optional[Dict[str, str]] = None,
+    status_code: int = status.HTTP_204_NO_CONTENT,
+):
+    """
+    Raise a 204 No Content HTTPException.
+    Args:
+        message (str): Custom message to include in the response (default: "No content").
+        headers (Dict[str, str], optional): Custom headers to include in the response.
+        status_code (int): HTTP status code (default: 204).
+
+    Returns:
+        dict: Response object with status and detail.
+    """
+    response_data = {"status": status_code, "detail": message}
+
+    if headers:
+        return JSONResponse(
+            content=response_data, status_code=status_code, headers=headers
+        )
+
+    return response_data
+
+
 def method_not_allowed_response(
     message: str = "Method not allowed",
     headers: Optional[Dict[str, str]] = None,
