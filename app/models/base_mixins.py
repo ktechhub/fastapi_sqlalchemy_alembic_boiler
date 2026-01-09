@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+from datetime import datetime
 import uuid as py_uuid
 from sqlalchemy import DateTime, String, BigInteger, text
 from sqlalchemy.sql.sqltypes import Boolean
@@ -24,6 +25,16 @@ class BaseModelMixin:
         return {
             column.name: getattr(self, column.name) for column in self.__table__.columns
         }
+
+    def to_raw_dict(self) -> Dict[str, Any]:
+        out = {}
+        for column in self.__table__.columns:
+            value = getattr(self, column.name)
+            # Convert datetime to ISO format string for JSON serialization
+            if value is not None and isinstance(value, datetime):
+                value = value.isoformat()
+            out[column.name] = value
+        return out
 
     def to_dict_with_relations(self) -> dict[str, Any]:
         result = self.to_dict()
