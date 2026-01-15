@@ -23,7 +23,7 @@ PyJWT==2.10.1
 python-jose==3.3.0
 python-multipart==0.0.20
 python-slugify==8.0.4
-pywebguard
+pywebguard==1.0.26
 PyYAML==6.0.2
 redis==6.2.0
 sendgrid==6.12.4
