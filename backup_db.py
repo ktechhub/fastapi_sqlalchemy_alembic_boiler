@@ -3,6 +3,7 @@
 MySQL Database Backup Script
 Creates a MySQL dump and uploads it to S3 bucket.
 """
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,11 +17,12 @@ from pathlib import Path
 import gzip
 import shutil
 import requests
+from app.core.config import settings
 
 # Environment variables
 DB_HOST = os.getenv("DB_HOST", "mysql")
 DB_PORT = os.getenv("DB_PORT", "3306")
-DB_USER = "root"
+DB_USER = os.getenv("DB_ROOT_USER", "root")
 DB_PASSWORD = os.getenv("DB_ROOT_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
 
@@ -261,7 +263,7 @@ def main():
         log("=" * 50)
         log("Backup process completed successfully")
         msg = (
-            f"*PraiseExport::Backup Process Completed*\n\n"
+            f"*{settings.APP_NAME}::Backup Process Completed*\n\n"
             f"✅ Backup created successfully: {backup_path.name}\n"
             f"✅ Backup uploaded to S3: {compressed_path.name}\n"
             f"✅ Backup size: {compressed_path.stat().st_size / 1024 / 1024:.2f} MB\n"
@@ -275,7 +277,7 @@ def main():
     except Exception as e:
         log(f"Fatal error during backup: {e}")
         msg = (
-            f"*PraiseExport::Backup Process Failed*\n\n"
+            f"*{settings.APP_NAME}::Backup Process Failed*\n\n"
             f"❌ Error: {e}\n"
             f"🕒 Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
         )
