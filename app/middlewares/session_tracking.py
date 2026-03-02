@@ -3,16 +3,15 @@ Session tracking middleware for updating user session activity.
 Optimized for performance: Redis-only operations, minimal DB access.
 """
 
-import json
 from fastapi import Request
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 import jwt
 
-from app.core.config import settings
 from app.core.loggers import app_logger as logger
-from app.services.redis_base import client as redis_client
+from app.services.redis_base import get_async_redis_client
 from app.services.redis_push import redis_push_async
-from app.utils.security_util import is_token_valid, decode_token_lightweight
+from app.utils.security_util import is_token_valid_async, decode_token_lightweight
 
 
 # Paths to exclude from session tracking
@@ -53,6 +52,7 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Optimized: Use Redis-only operations, defer DB writes
+        track_args = None
         try:
             # Lightweight decode (only get jti, skip full validation)
             # Full validation happens in get_current_user dependency
@@ -60,22 +60,15 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
             token_jti = payload.get("jti")
             user_uuid = payload.get("sub")
 
-            if not token_jti or not user_uuid:
-                return await call_next(request)
-
-            # Fast check: Token revocation (single Redis call)
-            if not is_token_valid(
-                token, user_uuid, token_type="access", payload=payload
-            ):
-                return await call_next(request)
-
-            # Redis-only session activity tracking (no DB query)
-            # Run in background to not block request
-            import asyncio
-
-            asyncio.create_task(
-                self._update_session_activity_redis_only(token_jti, user_uuid, request)
-            )
+            if token_jti and user_uuid:
+                # Fast check: Token revocation (single async Redis call)
+                if await is_token_valid_async(
+                    token, user_uuid, token_type="access", payload=payload
+                ):
+                    # Capture IP before response (request may not be safe to access later)
+                    client_ip = self._get_client_ip(request)
+                    user_agent = request.headers.get("user-agent", "")
+                    track_args = (token_jti, user_uuid, client_ip, user_agent)
 
         except jwt.PyJWTError:
             # Invalid token - continue (will be handled by auth dependency)
@@ -84,60 +77,63 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
             # Don't fail the request if session tracking fails
             logger.error(f"Error in session tracking middleware: {e}")
 
-        # Continue with the request (non-blocking)
         response = await call_next(request)
+
+        # Attach session tracking as a proper BackgroundTask on the response.
+        # This ensures Starlette manages the lifecycle and the task is not orphaned
+        # on shutdown.
+        if track_args is not None:
+            response.background = BackgroundTask(
+                self._update_session_activity_redis_only, *track_args
+            )
+
         return response
 
     async def _update_session_activity_redis_only(
-        self, token_jti: str, user_uuid: str, request: Request
+        self, token_jti: str, user_uuid: str, client_ip: str, user_agent: str
     ):
         """
         Update session activity using Redis-only operations.
         DB writes are deferred to background task.
         """
+        async_redis = await get_async_redis_client()
+
         # Check if session exists in Redis cache
-        session_uuid = redis_client.get(f"jti:{token_jti}")
+        session_uuid = await async_redis.get(f"jti:{token_jti}")
 
         if not session_uuid:
             # Session not found - queue for creation (background task)
             # This happens if login didn't create session
-            await self._queue_session_creation(token_jti, user_uuid, request)
+            await self._queue_session_creation(token_jti, user_uuid, client_ip, user_agent)
             return
-
-        # Handle both bytes and string (Redis client may return either)
-        if isinstance(session_uuid, bytes):
-            session_uuid = session_uuid.decode()
 
         # Throttle check (Redis-only)
         throttle_key = f"session:last_update:{session_uuid}"
-        if redis_client.get(throttle_key):
+        if await async_redis.get(throttle_key):
             # Already updated recently, skip
             return
 
         # Set throttle (5 minutes) - prevents DB write
-        redis_client.setex(throttle_key, 300, "1")  # 5 minutes = 300 seconds
+        await async_redis.setex(throttle_key, 300, "1")  # 5 minutes = 300 seconds
 
-        # Queue DB update in background (non-blocking, synchronous Redis)
+        # Queue DB update in background (non-blocking)
         await self._queue_session_update(session_uuid)
 
     async def _queue_session_creation(
-        self, token_jti: str, user_uuid: str, request: Request
+        self, token_jti: str, user_uuid: str, client_ip: str, user_agent: str
     ):
-        """Queue session creation as background task (synchronous Redis)."""
+        """Queue session creation as background task."""
         try:
-            # Format message to match standard queue format
             message = {
                 "queue_name": "sessions",
                 "operation": "create",
                 "data": {
                     "token_jti": token_jti,
                     "user_uuid": user_uuid,
-                    "ip_address": self._get_client_ip(request),
-                    "user_agent": request.headers.get("user-agent", ""),
+                    "ip_address": client_ip,
+                    "user_agent": user_agent,
                 },
             }
-
-            # Push to sessions queue (processed by background worker)
             await redis_push_async(message=message)
         except Exception as e:
             logger.error(f"Error queueing session creation: {e}")

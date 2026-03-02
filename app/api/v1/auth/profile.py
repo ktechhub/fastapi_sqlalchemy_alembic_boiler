@@ -14,7 +14,8 @@ from app.utils.responses import bad_request_response, success_response
 from app.utils.security_util import (
     create_access_token_from_refresh_token,
     invalidate_user_tokens,
-    is_token_valid,
+    invalidate_user_tokens_async,
+    is_token_valid_async,
     decode_access_token,
     decode_refresh_token,
 )
@@ -33,7 +34,7 @@ from app.utils.object_storage import save_file_to_s3
 from app.database.get_session import get_async_session
 from app.core.constants import ALLOWED_IMAGE_EXTENSIONS
 from app.core.loggers import app_logger as logger
-from app.services.redis_base import client as redis_client
+from app.services.redis_base import get_async_redis_client
 
 
 class UserProfileRouter:
@@ -239,7 +240,7 @@ class UserProfileRouter:
             user_uuid = payload.get("sub")
 
             # Check if token was revoked (pass payload to avoid double decode)
-            if not is_token_valid(
+            if not await is_token_valid_async(
                 refresh_token, user_uuid, token_type="refresh", payload=payload
             ):
                 logger.warning(
@@ -288,10 +289,11 @@ class UserProfileRouter:
                 if user_session:
                     await close_user_session(session, str(user_session.uuid))
 
-            invalidate_user_tokens(str(user.uuid))
+            await invalidate_user_tokens_async(str(user.uuid))
             # Cleanup cache using hashed token key
             token_hash = hash_token(token)
-            redis_client.delete(f"token:{token_hash}")
+            async_redis = await get_async_redis_client()
+            await async_redis.delete(f"token:{token_hash}")
 
             # Get user data for activity log (if needed)
             db_user = await self.crud.get(

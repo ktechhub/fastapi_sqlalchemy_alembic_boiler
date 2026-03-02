@@ -5,7 +5,7 @@ from app.models.user_sessions import UserSession
 from app.utils.telegram import send_telegram_msg
 from app.database.get_session import AsyncSessionLocal
 from app.core.config import settings
-from app.services.redis_base import client as redis_client
+from app.services.redis_base import get_async_redis_client
 
 
 async def cleanup_old_sessions():
@@ -35,10 +35,11 @@ async def cleanup_old_sessions():
             deleted_count += closed_count
 
             # Clean up Redis mappings for closed sessions
+            async_redis = await get_async_redis_client()
             for session in closed_sessions["data"]:
                 if session.token_jti:
-                    redis_client.delete(f"jti:{session.token_jti}")
-                redis_client.delete(f"session:last_update:{session.uuid}")
+                    await async_redis.delete(f"jti:{session.token_jti}")
+                await async_redis.delete(f"session:last_update:{session.uuid}")
 
         # 2. Clean up stale active sessions (haven't been active for 90 days)
         # Also include sessions with no last_active timestamp (older than 90 days from creation)
@@ -64,10 +65,11 @@ async def cleanup_old_sessions():
             deleted_count += stale_count
 
             # Clean up Redis mappings for stale sessions
+            async_redis = await get_async_redis_client()
             for session in stale_sessions["data"]:
                 if session.token_jti:
-                    redis_client.delete(f"jti:{session.token_jti}")
-                redis_client.delete(f"session:last_update:{session.uuid}")
+                    await async_redis.delete(f"jti:{session.token_jti}")
+                await async_redis.delete(f"session:last_update:{session.uuid}")
 
         msg = (
             f"*{settings.APP_NAME.upper()}::{settings.ENV.upper()}::Sessions Cleanup Report*\n\n"

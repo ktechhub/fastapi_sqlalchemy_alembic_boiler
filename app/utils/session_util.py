@@ -9,7 +9,7 @@ from user_agents import parse as parse_user_agent
 import httpx
 import json
 from ..core.config import settings
-from ..services.redis_base import client as redis_client
+from ..services.redis_base import get_async_redis_client
 from ..core.loggers import app_logger as logger
 
 
@@ -122,10 +122,9 @@ async def get_location_from_ip(ip: str) -> Dict[str, Optional[str]]:
 
     # Check Redis cache first
     cache_key = f"ip:location:{ip}"
-    cached_location = redis_client.get(cache_key)
+    async_redis = await get_async_redis_client()
+    cached_location = await async_redis.get(cache_key)
     if cached_location:
-        import json
-
         return json.loads(cached_location)
 
     # Fetch from API (using ip-api.com free tier)
@@ -149,10 +148,8 @@ async def get_location_from_ip(ip: str) -> Dict[str, Optional[str]]:
                         "country": data.get("countryCode"),
                         "country_name": data.get("country"),
                     }
-
                     # Cache for 24 hours
-
-                    redis_client.setex(cache_key, 86400, json.dumps(location_data))
+                    await async_redis.setex(cache_key, 86400, json.dumps(location_data))
     except Exception as e:
         logger.error(f"Error fetching location for IP {ip}: {e}")
         # Return empty location data on error

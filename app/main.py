@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+from sqlalchemy import text
 
 from dotenv import load_dotenv
 
@@ -27,6 +28,8 @@ from app.core.loggers import app_logger as logger
 from app.api.v1.docs.router import docs_router
 from app.deps.docs import get_current_docs_user
 from app.middlewares.session_tracking import SessionTrackingMiddleware
+from app.database.get_session import get_async_session
+from app.services.redis_base import get_async_redis_client
 
 terms_of_service = f"https://{settings.DOMAIN}/terms"
 description_text = f"""
@@ -124,7 +127,7 @@ if settings.SENTRY_DSN != "":
 
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
-        send_default_pii=True,
+        send_default_pii=False,
         traces_sample_rate=0,
         max_request_body_size="always",
         environment=settings.ENV,
@@ -137,12 +140,7 @@ if settings.SENTRY_DSN != "":
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=[
-        "localhost",
-        "127.0.0.1",
-        "ktechhub.com",
-        "*.ktechhub.com",
-    ],
+    allowed_hosts=settings.TRUSTED_HOSTS.split(","),
 )
 
 
@@ -153,17 +151,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         start_time = time.time()
-
-        # Log incoming request
-        print(f"➡️ {request.method} {request.url.path}")
+        logger.info(f"-> {request.method} {request.url.path}")
 
         response = await call_next(request)
 
         process_time = round((time.time() - start_time) * 1000, 2)
-
-        # Log response status and duration
-        print(
-            f"⬅️ {request.method} {request.url.path} - {response.status_code} ({process_time} ms)"
+        logger.info(
+            f"<- {request.method} {request.url.path} {response.status_code} ({process_time}ms)"
         )
 
         return response
@@ -179,9 +173,36 @@ async def docs():
 
 @app.get("/ready", status_code=status.HTTP_200_OK, include_in_schema=True)
 async def ready() -> str:
-    """Check if API it's ready"""
-    logger.info("API is ready")
+    """Check if API process is running."""
     return "ready"
+
+
+@app.get("/health", status_code=status.HTTP_200_OK, include_in_schema=True)
+async def health():
+    """Deep health check: verifies database and Redis connectivity."""
+    checks = {"database": "ok", "redis": "ok"}
+    healthy = True
+
+    # Check database
+    try:
+        async for session in get_async_session():
+            await session.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.error(f"Health check - database error: {e}")
+        checks["database"] = "error"
+        healthy = False
+
+    # Check Redis
+    try:
+        redis = await get_async_redis_client()
+        await redis.ping()
+    except Exception as e:
+        logger.error(f"Health check - redis error: {e}")
+        checks["redis"] = "error"
+        healthy = False
+
+    http_status = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(status_code=http_status, content={"status": "ok" if healthy else "degraded", "checks": checks})
 
 
 app.include_router(docs_router, prefix="")

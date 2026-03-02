@@ -13,7 +13,7 @@ from app.utils.session_util import (
     parse_user_agent_string,
     get_location_from_ip,
 )
-from app.services.redis_base import client as redis_client
+from app.services.redis_base import get_async_redis_client
 from app.core.loggers import app_logger as logger
 from app.database.get_session import AsyncSessionLocal
 from fastapi import Request
@@ -65,6 +65,8 @@ async def create_user_session(
         last_active=datetime.now(tz=timezone.utc),
     )
 
+    async_redis = await get_async_redis_client()
+
     # Check if session already exists (race condition protection)
     existing_sessions = await user_session_crud.get_multi(
         db=db, token_jti=token_jti, limit=1
@@ -72,7 +74,7 @@ async def create_user_session(
     if existing_sessions["data"]:
         session = existing_sessions["data"][0]
         # Cache the mapping if not already cached
-        redis_client.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
+        await async_redis.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
         logger.info(f"Session already exists for jti {token_jti}: {session.uuid}")
         return session
 
@@ -80,7 +82,7 @@ async def create_user_session(
         session = await user_session_crud.create(db=db, obj_in=session_data)
 
         # Store jti -> session_uuid mapping in Redis for quick lookup
-        redis_client.setex(
+        await async_redis.setex(
             f"jti:{token_jti}", 86400 * 7, str(session.uuid)
         )  # 7 days TTL
 
@@ -98,7 +100,7 @@ async def create_user_session(
             )
             if existing_sessions["data"]:
                 session = existing_sessions["data"][0]
-                redis_client.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
+                await async_redis.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
                 return session
         raise
 
@@ -140,7 +142,8 @@ async def update_session_activity(
 
         # Set throttle key (5 minutes TTL) - middleware already set it, but ensure it's there
         throttle_key = f"session:last_update:{session_uuid}"
-        redis_client.setex(throttle_key, throttle_minutes * 60, "1")
+        async_redis = await get_async_redis_client()
+        await async_redis.setex(throttle_key, throttle_minutes * 60, "1")
 
         logger.info(f"Updated session {session_uuid} last_active timestamp")
         return True
@@ -178,9 +181,10 @@ async def close_user_session(
         )
 
         # Clean up Redis mappings
+        async_redis = await get_async_redis_client()
         if session.token_jti:
-            redis_client.delete(f"jti:{session.token_jti}")
-        redis_client.delete(f"session:last_update:{session_uuid}")
+            await async_redis.delete(f"jti:{session.token_jti}")
+        await async_redis.delete(f"session:last_update:{session_uuid}")
 
         logger.info(f"Closed session {session_uuid}")
         return True
@@ -204,12 +208,11 @@ async def get_session_by_jti(
         UserSession if found, None otherwise
     """
     try:
+        async_redis = await get_async_redis_client()
+
         # Check Redis cache first
-        session_uuid = redis_client.get(f"jti:{token_jti}")
+        session_uuid = await async_redis.get(f"jti:{token_jti}")
         if session_uuid:
-            # Handle both bytes and string (Redis client may return either)
-            if isinstance(session_uuid, bytes):
-                session_uuid = session_uuid.decode()
             session = await user_session_crud.get(db=db, uuid=session_uuid)
             if session:
                 return session
@@ -221,7 +224,7 @@ async def get_session_by_jti(
         if sessions["data"]:
             session = sessions["data"][0]
             # Cache the mapping
-            redis_client.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
+            await async_redis.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
             return session
         return None
     except Exception as e:
@@ -241,8 +244,10 @@ async def process_session_creation(session_data: dict):
             logger.error(f"Invalid session creation data: {session_data}")
             return
 
+        async_redis = await get_async_redis_client()
+
         # Check if session already exists in Redis
-        existing_session_uuid = redis_client.get(f"jti:{token_jti}")
+        existing_session_uuid = await async_redis.get(f"jti:{token_jti}")
         if existing_session_uuid:
             logger.info(f"Session already exists for jti {token_jti}")
             return
@@ -260,7 +265,7 @@ async def process_session_creation(session_data: dict):
             if existing_sessions["data"]:
                 session = existing_sessions["data"][0]
                 # Cache the mapping
-                redis_client.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
+                await async_redis.setex(f"jti:{token_jti}", 86400 * 7, str(session.uuid))
                 logger.info(
                     f"Session already exists in DB for jti {token_jti}: {session.uuid}"
                 )
@@ -291,7 +296,7 @@ async def process_session_creation(session_data: dict):
                 )
 
                 # Store jti -> session_uuid mapping in Redis
-                redis_client.setex(
+                await async_redis.setex(
                     f"jti:{token_jti}", 86400 * 7, str(session.uuid)
                 )  # 7 days TTL
 
@@ -313,7 +318,7 @@ async def process_session_creation(session_data: dict):
                     )
                     if existing_sessions["data"]:
                         session = existing_sessions["data"][0]
-                        redis_client.setex(
+                        await async_redis.setex(
                             f"jti:{token_jti}", 86400 * 7, str(session.uuid)
                         )
                         logger.info(

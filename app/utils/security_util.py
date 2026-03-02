@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Union, Any, Tuple
 import jwt
 from ..core.config import settings
-from ..services.redis_base import client as redis_client
+from ..services.redis_base import client as redis_client, get_async_redis_client
 from ..core.loggers import app_logger as logger
 
 
@@ -124,6 +124,54 @@ def create_access_token_from_refresh_token(
     return create_access_token(
         decoded_refresh_token["sub"], expires_delta, jti=refresh_jti
     )
+
+
+async def invalidate_user_tokens_async(user_uuid: str) -> bool:
+    """
+    Async version of invalidate_user_tokens using the async Redis client.
+    Prefer this inside async route handlers and dependencies.
+    """
+    try:
+        async_client = await get_async_redis_client()
+        logout_timestamp = int(datetime.now(tz=timezone.utc).timestamp())
+        max_token_ttl = settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60
+        await async_client.setex(
+            f"user:logout:{user_uuid}", max_token_ttl, str(logout_timestamp)
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error invalidating user tokens: {e}")
+        return False
+
+
+async def is_token_valid_async(
+    token: str, user_uuid: str, token_type: str = "access", payload: dict = None
+) -> bool:
+    """
+    Async version of is_token_valid using the async Redis client.
+    Prefer this inside async dependencies and middleware.
+    """
+    try:
+        async_client = await get_async_redis_client()
+        logout_timestamp_str = await async_client.get(f"user:logout:{user_uuid}")
+        if not logout_timestamp_str:
+            return True
+
+        logout_timestamp = int(logout_timestamp_str)
+
+        if payload is None:
+            if token_type == "access":
+                payload = decode_access_token(token)
+            else:
+                payload = decode_refresh_token(token)
+
+        iat = payload.get("iat")
+        return int(iat) >= logout_timestamp if iat is not None else False
+    except (jwt.ExpiredSignatureError, jwt.PyJWTError):
+        return False
+    except Exception as e:
+        logger.error(f"Error validating token: {e}")
+        return False
 
 
 def invalidate_user_tokens(user_uuid: str) -> bool:

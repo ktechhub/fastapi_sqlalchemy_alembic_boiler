@@ -5,6 +5,9 @@ from ..services.cache_service import async_cache_service
 from ..core.loggers import app_logger as logger
 from ..core.config import settings
 
+# Types that are safely JSON-serialisable without calling json.dumps
+_JSON_SAFE_TYPES = (str, int, float, bool, type(None))
+
 
 class CacheMixin:
     """Simplified mixin to add caching functionality to CRUD classes"""
@@ -38,19 +41,22 @@ class CacheMixin:
         """
         cache_filters = {"skip": skip, "limit": limit, "sort": sort}
 
-        # Add other filters that affect the result, but only if they're JSON serializable
+        # Add other filters that affect the result, but only if they're JSON serializable.
+        # Check with isinstance first (fast path for primitives); fall back to json.dumps
+        # only for containers so we avoid serialising every value twice.
         for key, value in filters.items():
-            if value is not None:
-                # Check if the value is JSON serializable
+            if value is None:
+                continue
+            if isinstance(value, _JSON_SAFE_TYPES):
+                cache_filters[key] = value
+            elif isinstance(value, (list, dict)):
                 try:
                     import json
-
                     json.dumps(value)
                     cache_filters[key] = value
                 except (TypeError, ValueError):
-                    # Skip non-serializable values (like SQLAlchemy Select objects)
-                    # logger.debug(f"Skipping non-serializable filter {key}: {type(value)}")
                     continue
+            # Skip non-serializable values (e.g. SQLAlchemy Select objects)
 
         return cache_filters
 
@@ -159,10 +165,13 @@ class CacheMixin:
 
         # Add other filters that affect the result, but only if they're JSON serializable
         for key, value in filters.items():
-            if value is not None:
+            if value is None:
+                continue
+            if isinstance(value, _JSON_SAFE_TYPES):
+                cache_filters[key] = value
+            elif isinstance(value, (list, dict)):
                 try:
                     import json
-
                     json.dumps(value)
                     cache_filters[key] = value
                 except (TypeError, ValueError):

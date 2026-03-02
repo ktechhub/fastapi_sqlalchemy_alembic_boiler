@@ -1,4 +1,5 @@
-import json, redis
+import json
+import redis
 from typing import Callable
 from datetime import datetime
 from fastapi import Depends, HTTPException
@@ -24,9 +25,9 @@ from ..utils.responses import (
     forbidden_response,
     internal_server_error_response,
 )
-from ..services.redis_base import client as redis_client
+from ..services.redis_base import get_async_redis_client
 from ..core.loggers import app_logger as logger
-from ..utils.security_util import is_token_valid, decode_access_token
+from ..utils.security_util import is_token_valid_async, decode_access_token
 from ..utils.encryption_util import hash_token, encrypt_data, decrypt_data
 
 reuseable_oauth = OAuth2PasswordBearer(
@@ -60,15 +61,16 @@ async def get_current_user(
         token_data = TokenPayloadSchema(**payload)
 
         # Check if token was revoked (pass payload to avoid double decode)
-        if not is_token_valid(
+        if not await is_token_valid_async(
             token, token_data.sub, token_type="access", payload=payload
         ):
             logger.warning(f"Attempted to use revoked token for user {token_data.sub}")
-            return not_authorized_response("Token has been revoked")
+            not_authorized_response("Token has been revoked")
 
         # Use hashed token as Redis key to prevent token exposure
+        async_redis = await get_async_redis_client()
         token_hash = hash_token(token)
-        cached_user = redis_client.get(f"token:{token_hash}")
+        cached_user = await async_redis.get(f"token:{token_hash}")
         if cached_user:
             # Decrypt cached user data
             try:
@@ -85,7 +87,7 @@ async def get_current_user(
             db=session, uuid=token_data.sub, eager_load=[User.roles]
         )
         if user is None:
-            return not_authorized_response("Could not validate credentials")
+            not_authorized_response("Could not validate credentials")
 
         permissions = await get_user_permissions(user, session)
         user_data = UserDepSchema(
@@ -99,25 +101,25 @@ async def get_current_user(
         expiry_time = min(3600, expires_in) if expires_in > 0 else 3600
         # Encrypt user data and use hashed token as key to prevent token exposure
         encrypted_data = encrypt_data(user_data.model_dump_json())
-        redis_client.setex(f"token:{token_hash}", expiry_time, encrypted_data)
+        await async_redis.setex(f"token:{token_hash}", expiry_time, encrypted_data)
         return user_data
     except HTTPException:
         # Re-raise HTTPException (from not_authorized_response, etc.) to preserve status code
         raise
     except ValidationError:
-        return not_authorized_response("Could not validate credentials")
+        not_authorized_response("Could not validate credentials")
     except jwt.ExpiredSignatureError:
         logger.error("Token expired")
-        return not_authorized_response("Token expired")
+        not_authorized_response("Token expired")
     except jwt.PyJWTError:
         logger.error("Invalid token")
-        return not_authorized_response("Invalid token")
+        not_authorized_response("Invalid token")
     except redis.exceptions.ConnectionError:
         logger.error("Redis connection error")
-        return internal_server_error_response("Internal server error")
+        internal_server_error_response("Internal server error")
     except Exception as e:
         logger.error(f"Error authenticating user: {e}")
-        return internal_server_error_response("Internal server error")
+        internal_server_error_response("Internal server error")
 
 
 def get_user_with_role(required_role: str) -> Callable:
@@ -130,9 +132,7 @@ def get_user_with_role(required_role: str) -> Callable:
 
     async def role_dependency(user: UserDepSchema = Depends(get_current_user)):
         if not user.has_role(required_role):
-            return forbidden_response(
-                f"You do not have the required role(s): {required_role}"
-            )
+            forbidden_response(f"You do not have the required role(s): {required_role}")
         return user
 
     return role_dependency
@@ -148,7 +148,7 @@ def get_user_with_permission(required_permission: str) -> Callable:
 
     async def permission_dependency(user: UserDepSchema = Depends(get_current_user)):
         if not user.has_permission(required_permission):
-            return forbidden_response(
+            forbidden_response(
                 f"You do not have the required permission(s): {required_permission}"
             )
         return user
