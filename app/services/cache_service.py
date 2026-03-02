@@ -219,7 +219,7 @@ class AsyncCacheService:
         try:
             result = await self.cache.delete(key)
             if result:
-                print(f"Deleted cache key: {key}")
+                logger.debug(f"Deleted cache key: {key}")
             return bool(result)
         except Exception as e:
             logger.warning(f"Cache delete error for key {key}: {e}")

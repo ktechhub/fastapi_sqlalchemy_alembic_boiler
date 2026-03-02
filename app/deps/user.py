@@ -1,11 +1,11 @@
-import json, redis
+import json
 from typing import Callable
 from datetime import datetime
+import redis
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 import jwt
 from pydantic import ValidationError
 
@@ -24,9 +24,9 @@ from ..utils.responses import (
     forbidden_response,
     internal_server_error_response,
 )
-from ..services.redis_base import client as redis_client
+from ..services.redis_base import get_async_redis_client
 from ..core.loggers import app_logger as logger
-from ..utils.security_util import is_token_valid, decode_access_token
+from ..utils.security_util import is_token_valid_async, decode_access_token
 from ..utils.encryption_util import hash_token, encrypt_data, decrypt_data
 
 reuseable_oauth = OAuth2PasswordBearer(
@@ -52,7 +52,8 @@ async def get_user_permissions(user: User, db: AsyncSession):
 
 
 async def get_current_user(
-    token: str = Depends(reuseable_oauth), session: Session = Depends(get_async_session)
+    token: str = Depends(reuseable_oauth),
+    session: AsyncSession = Depends(get_async_session),
 ):
     try:
         # Decode JWT (validates expiration, nbf, issuer, and audience)
@@ -60,7 +61,7 @@ async def get_current_user(
         token_data = TokenPayloadSchema(**payload)
 
         # Check if token was revoked (pass payload to avoid double decode)
-        if not is_token_valid(
+        if not await is_token_valid_async(
             token, token_data.sub, token_type="access", payload=payload
         ):
             logger.warning(f"Attempted to use revoked token for user {token_data.sub}")
@@ -68,7 +69,8 @@ async def get_current_user(
 
         # Use hashed token as Redis key to prevent token exposure
         token_hash = hash_token(token)
-        cached_user = redis_client.get(f"token:{token_hash}")
+        async_redis = await get_async_redis_client()
+        cached_user = await async_redis.get(f"token:{token_hash}")
         if cached_user:
             # Decrypt cached user data
             try:
@@ -99,7 +101,7 @@ async def get_current_user(
         expiry_time = min(3600, expires_in) if expires_in > 0 else 3600
         # Encrypt user data and use hashed token as key to prevent token exposure
         encrypted_data = encrypt_data(user_data.model_dump_json())
-        redis_client.setex(f"token:{token_hash}", expiry_time, encrypted_data)
+        await async_redis.setex(f"token:{token_hash}", expiry_time, encrypted_data)
         return user_data
     except HTTPException:
         # Re-raise HTTPException (from not_authorized_response, etc.) to preserve status code
@@ -112,7 +114,7 @@ async def get_current_user(
     except jwt.PyJWTError:
         logger.error("Invalid token")
         return not_authorized_response("Invalid token")
-    except redis.exceptions.ConnectionError:
+    except redis.asyncio.exceptions.ConnectionError:
         logger.error("Redis connection error")
         return internal_server_error_response("Internal server error")
     except Exception as e:

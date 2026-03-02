@@ -76,13 +76,24 @@ contact: dict = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
     logger.info(
         f"Starting the application {settings.APP_NAME.upper()} {settings.API_VERSION}"
     )
+    app.state.session_tasks = set()
     scheduler = schedule_tasks()
     try:
         yield
     finally:
+        # Drain session tracking tasks before shutdown
+        session_tasks = getattr(app.state, "session_tasks", set())
+        if session_tasks:
+            done, pending = await asyncio.wait(
+                session_tasks, timeout=5.0, return_when=asyncio.ALL_COMPLETED
+            )
+            for t in pending:
+                t.cancel()
         scheduler.shutdown()
 
 
@@ -124,7 +135,7 @@ if settings.SENTRY_DSN != "":
 
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
-        send_default_pii=True,
+        send_default_pii=settings.SENTRY_SEND_DEFAULT_PII,
         traces_sample_rate=0,
         max_request_body_size="always",
         environment=settings.ENV,
@@ -137,12 +148,7 @@ if settings.SENTRY_DSN != "":
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=[
-        "localhost",
-        "127.0.0.1",
-        "ktechhub.com",
-        "*.ktechhub.com",
-    ],
+    allowed_hosts=[h.strip() for h in settings.ALLOWED_TRUSTED_HOSTS.split(",")],
 )
 
 
@@ -154,15 +160,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         start_time = time.time()
 
-        # Log incoming request
-        print(f"➡️ {request.method} {request.url.path}")
+        logger.info(f"➡️ {request.method} {request.url.path}")
 
         response = await call_next(request)
 
         process_time = round((time.time() - start_time) * 1000, 2)
-
-        # Log response status and duration
-        print(
+        logger.info(
             f"⬅️ {request.method} {request.url.path} - {response.status_code} ({process_time} ms)"
         )
 
@@ -178,10 +181,31 @@ async def docs():
 
 
 @app.get("/ready", status_code=status.HTTP_200_OK, include_in_schema=True)
-async def ready() -> str:
-    """Check if API it's ready"""
-    logger.info("API is ready")
-    return "ready"
+async def ready():
+    """Health check: validates DB and Redis connectivity. Returns 200 if all OK, 503 otherwise."""
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+    from app.services.redis_base import get_async_redis_client
+    from app.database.get_session import engine
+
+    checks = {"db": "ok", "redis": "ok"}
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as e:
+        checks["db"] = str(e)
+    try:
+        redis = await get_async_redis_client()
+        await redis.ping()
+    except Exception as e:
+        checks["redis"] = str(e)
+
+    if checks["db"] != "ok" or checks["redis"] != "ok":
+        return JSONResponse(
+            content={"detail": "Service unavailable", "checks": checks},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return JSONResponse(content={"status": "ready", "checks": checks})
 
 
 app.include_router(docs_router, prefix="")

@@ -3,16 +3,16 @@ Session tracking middleware for updating user session activity.
 Optimized for performance: Redis-only operations, minimal DB access.
 """
 
-import json
+import asyncio
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import jwt
 
 from app.core.config import settings
 from app.core.loggers import app_logger as logger
-from app.services.redis_base import client as redis_client
+from app.services.redis_base import get_async_redis_client
 from app.services.redis_push import redis_push_async
-from app.utils.security_util import is_token_valid, decode_token_lightweight
+from app.utils.security_util import is_token_valid_async, decode_token_lightweight
 
 
 # Paths to exclude from session tracking
@@ -64,18 +64,20 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
             # Fast check: Token revocation (single Redis call)
-            if not is_token_valid(
+            if not await is_token_valid_async(
                 token, user_uuid, token_type="access", payload=payload
             ):
                 return await call_next(request)
 
             # Redis-only session activity tracking (no DB query)
-            # Run in background to not block request
-            import asyncio
-
-            asyncio.create_task(
+            # Track task for graceful shutdown (drain on app stop)
+            task = asyncio.create_task(
                 self._update_session_activity_redis_only(token_jti, user_uuid, request)
             )
+            session_tasks = getattr(request.app.state, "session_tasks", None)
+            if session_tasks is not None:
+                session_tasks.add(task)
+                task.add_done_callback(lambda t, st=session_tasks: st.discard(t))
 
         except jwt.PyJWTError:
             # Invalid token - continue (will be handled by auth dependency)
@@ -95,8 +97,8 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
         Update session activity using Redis-only operations.
         DB writes are deferred to background task.
         """
-        # Check if session exists in Redis cache
-        session_uuid = redis_client.get(f"jti:{token_jti}")
+        redis = await get_async_redis_client()
+        session_uuid = await redis.get(f"jti:{token_jti}")
 
         if not session_uuid:
             # Session not found - queue for creation (background task)
@@ -110,14 +112,14 @@ class SessionTrackingMiddleware(BaseHTTPMiddleware):
 
         # Throttle check (Redis-only)
         throttle_key = f"session:last_update:{session_uuid}"
-        if redis_client.get(throttle_key):
+        if await redis.get(throttle_key):
             # Already updated recently, skip
             return
 
         # Set throttle (5 minutes) - prevents DB write
-        redis_client.setex(throttle_key, 300, "1")  # 5 minutes = 300 seconds
+        await redis.setex(throttle_key, 300, "1")  # 5 minutes = 300 seconds
 
-        # Queue DB update in background (non-blocking, synchronous Redis)
+        # Queue DB update in background (non-blocking, async Redis)
         await self._queue_session_update(session_uuid)
 
     async def _queue_session_creation(

@@ -38,19 +38,11 @@ class CacheMixin:
         """
         cache_filters = {"skip": skip, "limit": limit, "sort": sort}
 
-        # Add other filters that affect the result, but only if they're JSON serializable
+        # Add other filters that affect the result
+        # cache_service._generate_cache_key will skip non-serializable values when building the key
         for key, value in filters.items():
             if value is not None:
-                # Check if the value is JSON serializable
-                try:
-                    import json
-
-                    json.dumps(value)
-                    cache_filters[key] = value
-                except (TypeError, ValueError):
-                    # Skip non-serializable values (like SQLAlchemy Select objects)
-                    # logger.debug(f"Skipping non-serializable filter {key}: {type(value)}")
-                    continue
+                cache_filters[key] = value
 
         return cache_filters
 
@@ -157,16 +149,11 @@ class CacheMixin:
             else:
                 cache_filters["fields"] = [str(field) for field in fields]
 
-        # Add other filters that affect the result, but only if they're JSON serializable
+        # Add other filters that affect the result
+        # cache_service._generate_cache_key will skip non-serializable values when building the key
         for key, value in filters.items():
             if value is not None:
-                try:
-                    import json
-
-                    json.dumps(value)
-                    cache_filters[key] = value
-                except (TypeError, ValueError):
-                    continue
+                cache_filters[key] = value
 
         return cache_filters
 

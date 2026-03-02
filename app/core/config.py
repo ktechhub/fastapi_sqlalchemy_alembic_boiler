@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     DEFAULT_PASSWORD: str = "password"
 
     ALLOWED_HOSTS: str = "*"
+    # Comma-separated list for TrustedHostMiddleware (e.g. "localhost,127.0.0.1,ktechhub.com,*.ktechhub.com")
+    ALLOWED_TRUSTED_HOSTS: str = "localhost,127.0.0.1,ktechhub.com,*.ktechhub.com"
 
     EMAIL_SERVICE: str = "custom"  # custom, mailjet, sendgrid
     MAIL_USERNAME: str = "no-reply@ktechhub.com"
@@ -38,6 +40,8 @@ class Settings(BaseSettings):
     DB_NAME: str = "ktechhub"
     DB_ENGINE: str = "mysql"
     DATABASE_URL: str = ""
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
 
     REDIS_PORT: int = 6379
     REDIS_HOST: str = "localhost"
@@ -81,6 +85,7 @@ class Settings(BaseSettings):
     SENDGRID_API_KEY: str = ""
 
     SENTRY_DSN: str = ""
+    SENTRY_SEND_DEFAULT_PII: bool = False
 
     model_config = ConfigDict(extra="ignore")
 

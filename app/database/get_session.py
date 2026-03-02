@@ -11,7 +11,8 @@ DATABASE_URL = settings.DATABASE_URL
 engine_options = {}
 if "sqlite" not in DATABASE_URL:
     engine_options = {
-        "pool_size": 200,  # Adjust pool size for non-SQLite databases
+        "pool_size": settings.DB_POOL_SIZE,
+        "max_overflow": settings.DB_MAX_OVERFLOW,
         "pool_pre_ping": True,
     }
 
@@ -32,5 +33,8 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
